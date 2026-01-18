@@ -15,6 +15,7 @@ const SceneList = () => {
     activeScriptId,
     productionName,
     setSelectedSection,
+    clearPracticeLines,
   } = useScene();
   const { getSectionsForCharacter, loading } = useSceneData();
 
@@ -49,12 +50,14 @@ const SceneList = () => {
   }, [selectedMode, selectedRole, navigate]);
 
   const handleSelectSection = (section: ScriptSection) => {
+    clearPracticeLines(); // Clear old lines before selecting new section
     setSelectedSection(section);
     // Go directly to practice mode
     navigate(selectedMode || '/practice/cue-say-it');
   };
 
   const handlePracticeAll = () => {
+    clearPracticeLines(); // Clear old lines before selecting all
     // Set section to null to indicate "all sections"
     setSelectedSection(null);
     navigate(selectedMode || '/practice/cue-say-it');
