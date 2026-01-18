@@ -39,6 +39,7 @@ const AdminTranslations = () => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Check admin status
   useEffect(() => {
@@ -118,53 +119,53 @@ const AdminTranslations = () => {
   }, [selectedSceneId]);
 
   // Fetch translation stats
+  const fetchStats = async () => {
+    if (!selectedSceneId) return;
+
+    let blockQuery = supabase
+      .from('line_blocks')
+      .select('id')
+      .eq('scene_id', selectedSceneId);
+
+    if (selectedSectionId) {
+      blockQuery = blockQuery.eq('section_id', selectedSectionId);
+    }
+
+    const { data: blocks, error: blocksError } = await blockQuery;
+
+    if (blocksError || !blocks) {
+      console.error('Error fetching blocks:', blocksError);
+      return;
+    }
+
+    const blockIds = blocks.map(b => b.id);
+    
+    if (blockIds.length === 0) {
+      setStats({ total: 0, completed: 0, pending: 0, error: 0 });
+      return;
+    }
+
+    const { data: translations } = await supabase
+      .from('lineblock_translations')
+      .select('status')
+      .in('lineblock_id', blockIds)
+      .eq('style', 'plain_english');
+
+    const completed = (translations || []).filter(t => t.status === 'completed').length;
+    const pending = (translations || []).filter(t => t.status === 'pending' || t.status === 'processing').length;
+    const errorCount = (translations || []).filter(t => t.status === 'error').length;
+
+    setStats({
+      total: blockIds.length,
+      completed,
+      pending,
+      error: errorCount,
+    });
+  };
+
   useEffect(() => {
-    const fetchStats = async () => {
-      if (!selectedSceneId) return;
-
-      let blockQuery = supabase
-        .from('line_blocks')
-        .select('id')
-        .eq('scene_id', selectedSceneId);
-
-      if (selectedSectionId) {
-        blockQuery = blockQuery.eq('section_id', selectedSectionId);
-      }
-
-      const { data: blocks, error: blocksError } = await blockQuery;
-
-      if (blocksError || !blocks) {
-        console.error('Error fetching blocks:', blocksError);
-        return;
-      }
-
-      const blockIds = blocks.map(b => b.id);
-      
-      if (blockIds.length === 0) {
-        setStats({ total: 0, completed: 0, pending: 0, error: 0 });
-        return;
-      }
-
-      const { data: translations } = await supabase
-        .from('lineblock_translations')
-        .select('status')
-        .in('lineblock_id', blockIds)
-        .eq('style', 'plain_english');
-
-      const completed = (translations || []).filter(t => t.status === 'completed').length;
-      const pending = (translations || []).filter(t => t.status === 'pending' || t.status === 'processing').length;
-      const errorCount = (translations || []).filter(t => t.status === 'error').length;
-
-      setStats({
-        total: blockIds.length,
-        completed,
-        pending,
-        error: errorCount,
-      });
-    };
-
     fetchStats();
-  }, [selectedSceneId, selectedSectionId]);
+  }, [selectedSceneId, selectedSectionId, refreshKey]);
 
   const handleGenerateTranslations = async () => {
     if (!selectedSceneId) return;
@@ -205,7 +206,7 @@ const AdminTranslations = () => {
       );
 
       // Refresh stats
-      setSelectedSceneId(prev => prev);
+      setRefreshKey(prev => prev + 1);
     } catch (error: any) {
       console.error('Error generating translations:', error);
       toast.error(error.message || 'Failed to generate translations');
