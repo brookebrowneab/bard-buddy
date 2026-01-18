@@ -185,6 +185,17 @@ const AdminTranslations = () => {
     fetchStats();
   }, [selectedSceneId, selectedSectionId, refreshKey]);
 
+  // Auto-refresh stats every 5 seconds while generating
+  useEffect(() => {
+    if (!generating) return;
+
+    const interval = setInterval(() => {
+      fetchStats();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [generating, selectedSceneId, selectedSectionId]);
+
   const handleGenerateTranslations = async () => {
     if (!selectedSceneId) return;
 
