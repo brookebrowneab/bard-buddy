@@ -299,8 +299,16 @@ const AdminTranslations = () => {
             {/* Stats */}
             {selectedSceneId && (
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle>Translation Progress</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setRefreshKey(prev => prev + 1)}
+                    title="Refresh stats"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center gap-4 flex-wrap">
