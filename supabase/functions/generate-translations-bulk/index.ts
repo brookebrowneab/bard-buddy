@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const PROMPT_VERSION = "v1.0";
 const MODEL = "gpt-4o-mini";
+const DEFAULT_STYLE = "kid_modern_english_v1";
 // Process max 10 lines per request to avoid timeout (edge functions have 60s limit)
 const MAX_LINES_PER_REQUEST = 10;
 
@@ -74,7 +75,7 @@ serve(async (req) => {
       });
     }
 
-    const { scene_id, section_id, style = 'plain_english' } = await req.json();
+    const { scene_id, section_id, style = DEFAULT_STYLE } = await req.json();
 
     if (!scene_id) {
       return new Response(JSON.stringify({ error: 'scene_id is required' }), {
@@ -121,7 +122,7 @@ serve(async (req) => {
       .select('lineblock_id')
       .in('lineblock_id', lineBlockIds)
       .eq('style', style)
-      .eq('status', 'completed');
+      .eq('status', 'complete');
 
     const existingIds = new Set((existingTranslations || []).map(t => t.lineblock_id));
     const missingBlocks = lineBlocks.filter(lb => !existingIds.has(lb.id));
@@ -149,13 +150,15 @@ serve(async (req) => {
 
     const batchPromises = blocksToProcess.map(async (block) => {
       try {
-        // Mark as processing
+        // Mark as pending
         await supabase
           .from('lineblock_translations')
           .upsert({
             lineblock_id: block.id,
             style,
-            status: 'processing',
+            status: 'pending',
+            source: 'ai',
+            review_status: 'needs_review',
             model: MODEL,
             prompt_version: PROMPT_VERSION,
           }, {
@@ -196,7 +199,7 @@ serve(async (req) => {
           .from('lineblock_translations')
           .update({
             translation_text: translationText,
-            status: 'completed',
+            status: 'complete',
             error: null,
           })
           .eq('lineblock_id', block.id)
@@ -210,7 +213,7 @@ serve(async (req) => {
         await supabase
           .from('lineblock_translations')
           .update({
-            status: 'error',
+            status: 'failed',
             error: errorMessage,
           })
           .eq('lineblock_id', block.id)

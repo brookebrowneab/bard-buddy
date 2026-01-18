@@ -16,7 +16,9 @@ import UploadScene from "./pages/UploadScene";
 import ParseReview from "./pages/ParseReview";
 import SceneList from "./pages/SceneList";
 import ModernEnglishGame from "./pages/ModernEnglishGame";
+import ModernEnglishSceneViewer from "./pages/ModernEnglishSceneViewer";
 import AdminTranslations from "./pages/AdminTranslations";
+import AdminTranslationsReview from "./pages/AdminTranslationsReview";
 import AdminLogin from "./pages/AdminLogin";
 import NotFound from "./pages/NotFound";
 
@@ -43,8 +45,10 @@ const App = () => (
             <Route path="/practice/scramble" element={<Scramble />} />
             <Route path="/practice/plain-english" element={<PlainEnglish />} />
             <Route path="/modern-english" element={<ModernEnglishGame />} />
+            <Route path="/modern-english-viewer" element={<ModernEnglishSceneViewer />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/translations" element={<AdminTranslations />} />
+            <Route path="/admin/translations-review" element={<AdminTranslationsReview />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
