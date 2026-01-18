@@ -7,13 +7,13 @@ import { useToast } from '@/hooks/use-toast';
 import { useSceneData } from '@/hooks/useSceneData';
 import { extractTextFromPdf } from '@/lib/pdfParser';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Upload, FileText, Loader2, Users, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Upload, FileText, Loader2, Users, MessageSquare, Layers } from 'lucide-react';
 import type { ParseResult } from '@/types/scene';
 
 const UploadScene = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { createScene, saveLineBlocks, saveCharacters, saveStageDirections, updateScene } = useSceneData();
+  const { createScene, saveLineBlocks, saveCharacters, saveStageDirections, saveSections, updateScene } = useSceneData();
   
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -114,8 +114,17 @@ const UploadScene = () => {
       // Update scene with normalized text
       await updateScene(scene.id, { normalized_text: result.normalized_text });
 
-      // Save line blocks
-      await saveLineBlocks(scene.id, result.line_blocks);
+      // Save sections first and get their IDs
+      const savedSections = await saveSections(scene.id, result.sections);
+      
+      // Create a map from section_index to section_id
+      const sectionIdMap: Record<number, string> = {};
+      savedSections.forEach((section, index) => {
+        sectionIdMap[index] = section.id;
+      });
+
+      // Save line blocks with section references
+      await saveLineBlocks(scene.id, result.line_blocks, sectionIdMap);
 
       // Save characters
       await saveCharacters(scene.id, result.characters);
@@ -124,8 +133,8 @@ const UploadScene = () => {
       await saveStageDirections(scene.id, result.stage_directions);
 
       toast({
-        title: 'Parsing complete!',
-        description: `Found ${result.characters.length} characters and ${result.line_blocks.length} lines`,
+        title: 'Script uploaded!',
+        description: `Found ${result.characters.length} characters, ${result.line_blocks.length} lines, and ${result.sections.length} scenes`,
       });
 
     } catch (error) {
@@ -146,6 +155,10 @@ const UploadScene = () => {
     }
   };
 
+  const handleStartPractice = () => {
+    navigate('/');
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -160,10 +173,10 @@ const UploadScene = () => {
           Back
         </Button>
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
-          Upload Scene PDF
+          Upload Script (Admin)
         </h1>
         <p className="text-center text-muted-foreground mt-2 text-sm">
-          Upload a Shakespeare scene to start practicing
+          Upload the full Much Ado About Nothing script
         </p>
       </header>
 
@@ -181,7 +194,7 @@ const UploadScene = () => {
             <CardContent className="space-y-4">
               <Input
                 type="text"
-                placeholder="Scene title (optional)"
+                placeholder="Script title (e.g., Much Ado About Nothing)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -237,12 +250,12 @@ const UploadScene = () => {
             ) : isParsing ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Parsing scene...
+                Parsing script...
               </>
             ) : (
               <>
                 <Upload className="w-5 h-5 mr-2" />
-                Extract & Parse
+                Extract & Parse Script
               </>
             )}
           </Button>
@@ -252,34 +265,52 @@ const UploadScene = () => {
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
                 <CardTitle className="text-lg text-primary">
-                  Parsing Complete!
+                  Script Uploaded!
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center gap-2 p-3 bg-background rounded-lg">
-                    <Users className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold text-foreground">
-                        {parseResult.characters.length}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Characters</p>
-                    </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="flex flex-col items-center p-3 bg-background rounded-lg">
+                    <Users className="w-5 h-5 text-primary mb-1" />
+                    <p className="text-2xl font-bold text-foreground">
+                      {parseResult.characters.length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Characters</p>
                   </div>
                   
-                  <div className="flex items-center gap-2 p-3 bg-background rounded-lg">
-                    <MessageSquare className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="text-2xl font-bold text-foreground">
-                        {parseResult.line_blocks.length}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Lines</p>
-                    </div>
+                  <div className="flex flex-col items-center p-3 bg-background rounded-lg">
+                    <Layers className="w-5 h-5 text-primary mb-1" />
+                    <p className="text-2xl font-bold text-foreground">
+                      {parseResult.sections.length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Scenes</p>
+                  </div>
+                  
+                  <div className="flex flex-col items-center p-3 bg-background rounded-lg">
+                    <MessageSquare className="w-5 h-5 text-primary mb-1" />
+                    <p className="text-2xl font-bold text-foreground">
+                      {parseResult.line_blocks.length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Lines</p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">Characters found:</p>
+                  <p className="text-sm font-medium text-foreground">Scenes detected:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {parseResult.sections.map((section, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 bg-background rounded-full text-xs text-foreground border border-border"
+                      >
+                        {section.title}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Characters:</p>
                   <div className="flex flex-wrap gap-2">
                     {parseResult.characters.map((char) => (
                       <span
@@ -292,13 +323,22 @@ const UploadScene = () => {
                   </div>
                 </div>
 
-                <Button
-                  variant="default"
-                  className="w-full"
-                  onClick={handleReviewParse}
-                >
-                  Review & Edit Parse
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleReviewParse}
+                  >
+                    Review Parse
+                  </Button>
+                  <Button
+                    variant="default"
+                    className="flex-1"
+                    onClick={handleStartPractice}
+                  >
+                    Done
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -308,7 +348,7 @@ const UploadScene = () => {
       {/* Footer */}
       <footer className="px-6 pb-8 text-center">
         <p className="font-serif text-sm text-muted-foreground italic">
-          Upload your scene and let's begin rehearsal
+          Admin: Upload the script once for all students
         </p>
       </footer>
     </div>

@@ -51,6 +51,7 @@ export type Database = {
           order_index: number
           preceding_cue_raw: string | null
           scene_id: string
+          section_id: string | null
           speaker_name: string
           text_raw: string
         }
@@ -61,6 +62,7 @@ export type Database = {
           order_index: number
           preceding_cue_raw?: string | null
           scene_id: string
+          section_id?: string | null
           speaker_name: string
           text_raw: string
         }
@@ -71,6 +73,7 @@ export type Database = {
           order_index?: number
           preceding_cue_raw?: string | null
           scene_id?: string
+          section_id?: string | null
           speaker_name?: string
           text_raw?: string
         }
@@ -80,6 +83,13 @@ export type Database = {
             columns: ["scene_id"]
             isOneToOne: false
             referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "line_blocks_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "script_sections"
             referencedColumns: ["id"]
           },
         ]
@@ -155,6 +165,44 @@ export type Database = {
           title?: string
         }
         Relationships: []
+      }
+      script_sections: {
+        Row: {
+          act_number: number | null
+          created_at: string
+          id: string
+          order_index: number
+          scene_id: string
+          scene_number: number | null
+          title: string
+        }
+        Insert: {
+          act_number?: number | null
+          created_at?: string
+          id?: string
+          order_index: number
+          scene_id: string
+          scene_number?: number | null
+          title: string
+        }
+        Update: {
+          act_number?: number | null
+          created_at?: string
+          id?: string
+          order_index?: number
+          scene_id?: string
+          scene_number?: number | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "script_sections_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stage_directions: {
         Row: {

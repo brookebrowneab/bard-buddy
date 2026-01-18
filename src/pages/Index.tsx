@@ -1,17 +1,89 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
-import { Sparkles, Drama, Upload, FolderOpen } from "lucide-react";
+import { useSceneData } from "@/hooks/useSceneData";
+import { Sparkles, Drama, Settings, User, Loader2 } from "lucide-react";
 
 const Index = () => {
-  const { sceneTitle, selectedRole, useSampleScene } = useScene();
+  const { sceneTitle, selectedRole, setSceneId, setSceneTitle, setCharacters } = useScene();
+  const { fetchScenes, fetchCharacters, scenes, loading } = useSceneData();
+  const [hasScript, setHasScript] = useState<boolean | null>(null);
   const navigate = useNavigate();
 
-  const handleUseSample = () => {
-    useSampleScene();
-    navigate("/role-picker");
-  };
+  // Check if a script has been uploaded
+  useEffect(() => {
+    const checkScript = async () => {
+      const data = await fetchScenes();
+      if (data && data.length > 0) {
+        // Use the most recent script
+        const script = data[0];
+        setSceneId(script.id);
+        setSceneTitle(script.title);
+        
+        // Load characters
+        const chars = await fetchCharacters(script.id);
+        if (chars) {
+          setCharacters(chars.map(c => c.name));
+        }
+        setHasScript(true);
+      } else {
+        setHasScript(false);
+      }
+    };
+    checkScript();
+  }, [fetchScenes, fetchCharacters, setSceneId, setSceneTitle, setCharacters]);
 
+  if (hasScript === null || loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // No script uploaded yet - show admin prompt
+  if (!hasScript) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="px-6 pt-8 pb-4 text-center">
+          <div className="inline-flex items-center gap-2 text-primary mb-2">
+            <Drama className="w-6 h-6" />
+            <span className="font-serif text-sm uppercase tracking-wide">Shakespeare Lines</span>
+          </div>
+          <h1 className="font-serif text-2xl font-bold text-foreground">
+            Much Ado About Nothing
+          </h1>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center px-6 pb-12">
+          <div className="w-full max-w-sm space-y-4 text-center">
+            <Drama className="w-16 h-16 mx-auto text-muted-foreground" />
+            <p className="text-muted-foreground">
+              No script has been uploaded yet.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              An admin needs to upload the script first.
+            </p>
+            <Link to="/upload" className="block w-full mt-6">
+              <Button variant="stage" size="xl" className="w-full">
+                <Settings className="w-5 h-5 mr-2" />
+                Admin: Upload Script
+              </Button>
+            </Link>
+          </div>
+        </main>
+
+        <footer className="px-6 pb-8 text-center">
+          <p className="font-serif text-sm text-muted-foreground italic">
+            "All the world's a stage..."
+          </p>
+        </footer>
+      </div>
+    );
+  }
+
+  // Script exists - show student home
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -21,7 +93,7 @@ const Index = () => {
           <span className="font-serif text-sm uppercase tracking-wide">Shakespeare Lines</span>
         </div>
         <h1 className="font-serif text-2xl font-bold text-foreground">
-          Memorize Your Lines
+          {sceneTitle || "Much Ado About Nothing"}
         </h1>
       </header>
 
@@ -33,50 +105,34 @@ const Index = () => {
             <div className="text-center mb-6 p-4 bg-card rounded-lg border border-border">
               <p className="text-sm text-muted-foreground mb-1">Your Role</p>
               <p className="font-serif text-xl font-semibold text-foreground">{selectedRole}</p>
-              <p className="text-xs text-muted-foreground mt-1">{sceneTitle}</p>
             </div>
           )}
 
-          {/* Upload PDF */}
-          <Link to="/upload" className="block w-full">
+          {/* Choose Role - Primary Action */}
+          <Link to="/role-picker" className="block w-full">
             <Button variant="stage" size="xl" className="w-full">
-              <Upload className="w-5 h-5 mr-2" />
-              Upload Scene PDF
+              <User className="w-5 h-5 mr-2" />
+              {selectedRole ? "Change Role" : "Choose My Role"}
             </Button>
           </Link>
 
-          {/* My Scenes */}
-          <Link to="/scenes" className="block w-full">
-            <Button variant="outline" size="xl" className="w-full">
-              <FolderOpen className="w-5 h-5 mr-2" />
-              My Uploaded Scenes
-            </Button>
-          </Link>
-
-          {/* Sample Scene */}
-          <Button 
-            variant="ghost" 
-            size="lg" 
-            className="w-full"
-            onClick={handleUseSample}
-          >
-            <Drama className="w-5 h-5 mr-2" />
-            Try Sample Scene
-          </Button>
-
-          {/* Continue Practicing */}
+          {/* Continue Practicing - if role selected */}
           {selectedRole && (
-            <Link to="/practice-modes" className="block w-full">
-              <Button 
-                variant="default" 
-                size="xl" 
-                className="w-full"
-              >
+            <Link to="/section-picker" className="block w-full">
+              <Button variant="default" size="xl" className="w-full">
                 <Sparkles className="w-5 h-5 mr-2" />
-                Continue Practice
+                Practice
               </Button>
             </Link>
           )}
+
+          {/* Admin Settings */}
+          <Link to="/upload" className="block w-full">
+            <Button variant="ghost" size="lg" className="w-full text-muted-foreground">
+              <Settings className="w-4 h-4 mr-2" />
+              Admin Settings
+            </Button>
+          </Link>
         </div>
       </main>
 
