@@ -241,6 +241,7 @@ const ModernEnglishSceneViewer = () => {
             <h1 className="font-semibold text-foreground flex items-center gap-2">
               <Languages className="w-5 h-5 text-primary" />
               Modern English
+              <Badge variant="outline" className="text-xs ml-2">Viewer v2 (canonical)</Badge>
             </h1>
             {selectedCharacter && (
               <p className="text-sm text-muted-foreground flex items-center gap-1">

@@ -11,7 +11,7 @@ import PracticeModes from "./pages/PracticeModes";
 import CueSayIt from "./pages/practice/CueSayIt";
 import FirstLetter from "./pages/practice/FirstLetter";
 import Scramble from "./pages/practice/Scramble";
-import PlainEnglish from "./pages/practice/PlainEnglish";
+// PlainEnglish now uses ModernEnglishSceneViewer (canonical-locked)
 import UploadScene from "./pages/UploadScene";
 import ParseReview from "./pages/ParseReview";
 import SceneList from "./pages/SceneList";
@@ -44,7 +44,7 @@ const App = () => (
             <Route path="/practice/cue-say-it" element={<CueSayIt />} />
             <Route path="/practice/first-letter" element={<FirstLetter />} />
             <Route path="/practice/scramble" element={<Scramble />} />
-            <Route path="/practice/plain-english" element={<PlainEnglish />} />
+            <Route path="/practice/plain-english" element={<ModernEnglishSceneViewer />} />
             <Route path="/modern-english" element={<ModernEnglishGame />} />
             <Route path="/modern-english-viewer" element={<ModernEnglishSceneViewer />} />
             <Route path="/admin/login" element={<AdminLogin />} />
