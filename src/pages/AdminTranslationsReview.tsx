@@ -44,10 +44,17 @@ interface LineBlockWithTranslation {
     review_status: string;
     source: string;
     error: string | null;
+    style: string;
   };
+  // Debug fields
+  translation_row_exists: boolean;
+  translation_id: string | null;
+  translation_style: string | null;
+  translation_status_raw: string | null;
+  translation_text_length: number;
 }
 
-const STYLE = "kid_modern_english_v1";
+const STYLE = "plain_english";
 
 const AdminTranslationsReview = () => {
   const navigate = useNavigate();
@@ -182,11 +189,11 @@ const AdminTranslationsReview = () => {
       return;
     }
 
-    // Fetch translations
+    // Fetch translations with style included for debugging
     const blockIds = blocks.map(b => b.id);
     const { data: translations } = await supabase
       .from('lineblock_translations')
-      .select('id, lineblock_id, translation_text, status, review_status, source, error')
+      .select('id, lineblock_id, translation_text, status, review_status, source, error, style')
       .in('lineblock_id', blockIds)
       .eq('style', STYLE);
 
@@ -197,11 +204,20 @@ const AdminTranslationsReview = () => {
     // Map sections
     const sectionMap = new Map(sections.map(s => [s.id, s]));
 
-    let result: LineBlockWithTranslation[] = blocks.map(block => ({
-      ...block,
-      section: block.section_id ? sectionMap.get(block.section_id) : undefined,
-      translation: translationMap.get(block.id),
-    }));
+    let result: LineBlockWithTranslation[] = blocks.map(block => {
+      const translation = translationMap.get(block.id);
+      return {
+        ...block,
+        section: block.section_id ? sectionMap.get(block.section_id) : undefined,
+        translation: translation ? { ...translation, style: translation.style } : undefined,
+        // Debug fields
+        translation_row_exists: !!translation,
+        translation_id: translation?.id || null,
+        translation_style: translation?.style || null,
+        translation_status_raw: translation?.status || null,
+        translation_text_length: translation?.translation_text?.length || 0,
+      };
+    });
 
     // Apply filters
     if (statusFilter !== "all") {
@@ -519,6 +535,12 @@ const AdminTranslationsReview = () => {
                   <TableHead>Original (excerpt)</TableHead>
                   <TableHead className="w-28">Status</TableHead>
                   <TableHead className="w-32">Review</TableHead>
+                  {/* DEBUG COLUMNS */}
+                  <TableHead className="w-20 bg-yellow-100 dark:bg-yellow-900">Row Exists</TableHead>
+                  <TableHead className="w-32 bg-yellow-100 dark:bg-yellow-900">Trans ID</TableHead>
+                  <TableHead className="w-24 bg-yellow-100 dark:bg-yellow-900">Style</TableHead>
+                  <TableHead className="w-24 bg-yellow-100 dark:bg-yellow-900">Status Raw</TableHead>
+                  <TableHead className="w-20 bg-yellow-100 dark:bg-yellow-900">Text Len</TableHead>
                   <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -539,6 +561,22 @@ const AdminTranslationsReview = () => {
                     </TableCell>
                     <TableCell>{getStatusBadge(line.translation)}</TableCell>
                     <TableCell>{getReviewBadge(line.translation)}</TableCell>
+                    {/* DEBUG COLUMNS */}
+                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
+                      {line.translation_row_exists ? '✅ true' : '❌ false'}
+                    </TableCell>
+                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs font-mono truncate max-w-[120px]">
+                      {line.translation_id || '-'}
+                    </TableCell>
+                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
+                      {line.translation_style || '-'}
+                    </TableCell>
+                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
+                      {line.translation_status_raw || 'missing'}
+                    </TableCell>
+                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
+                      {line.translation_text_length}
+                    </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openDetail(line); }}>
                         <Edit className="w-4 h-4" />
