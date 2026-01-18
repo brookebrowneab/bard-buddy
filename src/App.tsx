@@ -27,7 +27,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<PracticeModes />} />
             <Route path="/upload" element={<UploadScene />} />
             <Route path="/scenes" element={<SceneList />} />
             <Route path="/parse-review/:sceneId" element={<ParseReview />} />
@@ -35,7 +35,6 @@ const App = () => (
             <Route path="/role-picker/:sceneId" element={<RolePicker />} />
             <Route path="/section-picker" element={<SectionPicker />} />
             <Route path="/section-picker/:sceneId" element={<SectionPicker />} />
-            <Route path="/practice-modes" element={<PracticeModes />} />
             <Route path="/practice/cue-say-it" element={<CueSayIt />} />
             <Route path="/practice/first-letter" element={<FirstLetter />} />
             <Route path="/practice/scramble" element={<Scramble />} />
