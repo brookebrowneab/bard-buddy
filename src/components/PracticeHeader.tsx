@@ -8,10 +8,19 @@ interface PracticeHeaderProps {
 }
 
 const PracticeHeader = ({ title }: PracticeHeaderProps) => {
-  const { currentLineIndex, totalLines, selectedRole } = useScene();
+  const { currentLineIndex, totalLines, selectedRole, selectedSection } = useScene();
   const navigate = useNavigate();
 
   const progress = ((currentLineIndex + 1) / totalLines) * 100;
+
+  const handleBack = () => {
+    // Go back to role picker for the current section
+    if (selectedSection) {
+      navigate(`/role-picker/${selectedSection.id}`);
+    } else {
+      navigate('/scenes');
+    }
+  };
 
   return (
     <header className="px-4 pt-4 pb-2">
@@ -19,8 +28,8 @@ const PracticeHeader = ({ title }: PracticeHeaderProps) => {
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={() => navigate("/practice-modes")}
-          aria-label="Back to practice modes"
+          onClick={handleBack}
+          aria-label="Back to role picker"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
