@@ -364,6 +364,50 @@ export function useSceneData() {
     return true;
   }, []);
 
+  const convertToStageDirection = useCallback(async (block: LineBlock) => {
+    // Get the highest order_index from existing stage directions
+    const { data: existingDirections } = await supabase
+      .from('stage_directions')
+      .select('order_index')
+      .eq('scene_id', block.scene_id)
+      .order('order_index', { ascending: false })
+      .limit(1);
+    
+    const nextOrderIndex = existingDirections && existingDirections.length > 0 
+      ? existingDirections[0].order_index + 1 
+      : block.order_index;
+
+    // Insert as stage direction
+    const { error: insertError } = await supabase
+      .from('stage_directions')
+      .insert({
+        scene_id: block.scene_id,
+        order_index: nextOrderIndex,
+        text_raw: block.text_raw
+      });
+    
+    if (insertError) {
+      setError(insertError.message);
+      return false;
+    }
+
+    // Delete the line block
+    const { error: deleteError } = await supabase
+      .from('line_blocks')
+      .delete()
+      .eq('id', block.id);
+    
+    if (deleteError) {
+      setError(deleteError.message);
+      return false;
+    }
+    
+    // Update local state
+    setLineBlocks(prev => prev.filter(b => b.id !== block.id));
+    
+    return true;
+  }, []);
+
   const deleteScene = useCallback(async (sceneId: string) => {
     const { error: deleteError } = await supabase
       .from('scenes')
@@ -402,6 +446,7 @@ export function useSceneData() {
     saveStageDirections,
     updateLineBlock,
     deleteLineBlock,
+    convertToStageDirection,
     deleteScene,
     setCurrentScene,
     setLineBlocks,
