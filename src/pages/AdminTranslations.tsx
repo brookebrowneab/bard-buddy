@@ -419,7 +419,21 @@ const AdminTranslations = () => {
             {selectedSceneId && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle>Translation Progress</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Translation Progress
+                    {generating && (
+                      <Badge variant="secondary" className="gap-1 animate-pulse">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Standard
+                      </Badge>
+                    )}
+                    {generatingGpt52 && (
+                      <Badge className="gap-1 animate-pulse bg-purple-600">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        GPT-5.2
+                      </Badge>
+                    )}
+                  </CardTitle>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -456,6 +470,7 @@ const AdminTranslations = () => {
                     <Progress value={progressPercent} className="h-3" />
                     <p className="text-sm text-muted-foreground text-center">
                       {Math.round(progressPercent)}% complete
+                      {(generating || generatingGpt52) && ' — Generating...'}
                     </p>
                   </div>
 
