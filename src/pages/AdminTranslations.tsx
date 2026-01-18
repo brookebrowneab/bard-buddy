@@ -122,78 +122,63 @@ const AdminTranslations = () => {
   const fetchStats = async () => {
     if (!selectedSceneId) return;
 
-    // Get total line count using count
+    // 1) Total line count (fast, uses COUNT)
     let countQuery = supabase
-      .from('line_blocks')
-      .select('id', { count: 'exact', head: true })
-      .eq('scene_id', selectedSceneId);
+      .from("line_blocks")
+      .select("id", { count: "exact", head: true })
+      .eq("scene_id", selectedSceneId);
 
     if (selectedSectionId) {
-      countQuery = countQuery.eq('section_id', selectedSectionId);
+      countQuery = countQuery.eq("section_id", selectedSectionId);
     }
 
     const { count: totalCount, error: countError } = await countQuery;
 
     if (countError) {
-      console.error('Error fetching block count:', countError);
+      console.error("Error fetching block count:", countError);
       return;
     }
 
-    const total = totalCount || 0;
-    
+    const total = totalCount ?? 0;
+
     if (total === 0) {
       setStats({ total: 0, completed: 0, pending: 0, error: 0 });
       return;
     }
 
-    // Fetch all block IDs in batches to handle large scripts
-    const batchSize = 1000;
-    let allBlockIds: string[] = [];
-    let offset = 0;
-    
-    while (offset < total) {
-      let blockQuery = supabase
-        .from('line_blocks')
-        .select('id')
-        .eq('scene_id', selectedSceneId)
-        .range(offset, offset + batchSize - 1);
+    // 2) Translation counts by joining to line_blocks (avoids huge IN(...) lists)
+    const makeTranslationCountQuery = () => {
+      let q = supabase
+        .from("lineblock_translations")
+        .select("id, line_blocks!inner(scene_id, section_id)", { count: "exact", head: true })
+        .eq("style", "plain_english")
+        .eq("line_blocks.scene_id", selectedSceneId);
 
       if (selectedSectionId) {
-        blockQuery = blockQuery.eq('section_id', selectedSectionId);
+        q = q.eq("line_blocks.section_id", selectedSectionId);
       }
 
-      const { data: blocks } = await blockQuery;
-      if (blocks) {
-        allBlockIds = [...allBlockIds, ...blocks.map(b => b.id)];
-      }
-      offset += batchSize;
-    }
+      return q;
+    };
 
-    // Get translation counts - also batch if needed
-    let completed = 0;
-    let pending = 0;
-    let errorCount = 0;
+    const { count: completedCount, error: completedError } = await makeTranslationCountQuery().eq(
+      "status",
+      "completed"
+    );
+    if (completedError) console.error("Error fetching completed translations:", completedError);
 
-    for (let i = 0; i < allBlockIds.length; i += batchSize) {
-      const batchIds = allBlockIds.slice(i, i + batchSize);
-      
-      const { data: translations } = await supabase
-        .from('lineblock_translations')
-        .select('status')
-        .in('lineblock_id', batchIds)
-        .eq('style', 'plain_english');
+    const { count: errorCount, error: errorStatusError } = await makeTranslationCountQuery().eq(
+      "status",
+      "error"
+    );
+    if (errorStatusError) console.error("Error fetching error translations:", errorStatusError);
 
-      completed += (translations || []).filter(t => t.status === 'completed').length;
-      pending += (translations || []).filter(t => t.status === 'pending' || t.status === 'processing').length;
-      errorCount += (translations || []).filter(t => t.status === 'error').length;
-    }
+    // Treat anything not completed as pending/remaining (including missing rows)
+    const completed = completedCount ?? 0;
+    const error = errorCount ?? 0;
+    const pending = Math.max(0, total - completed - error);
 
-    setStats({
-      total,
-      completed,
-      pending,
-      error: errorCount,
-    });
+    setStats({ total, completed, pending, error });
   };
 
   useEffect(() => {
