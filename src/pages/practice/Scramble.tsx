@@ -1,0 +1,209 @@
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { useScene } from "@/context/SceneContext";
+import PracticeHeader from "@/components/PracticeHeader";
+import PracticeNavigation from "@/components/PracticeNavigation";
+import { Quote, RotateCcw, Check, Shuffle } from "lucide-react";
+
+const Scramble = () => {
+  const { getCurrentLine, selectedRole, currentLineIndex } = useScene();
+  const navigate = useNavigate();
+
+  const line = getCurrentLine();
+
+  // Split line into chunks (3-5 pieces)
+  const chunks = useMemo(() => {
+    if (!line) return [];
+    const words = line.shakespeare_line.split(/\s+/);
+    const numChunks = Math.min(5, Math.max(3, Math.ceil(words.length / 3)));
+    const chunkSize = Math.ceil(words.length / numChunks);
+    
+    const result: string[] = [];
+    for (let i = 0; i < words.length; i += chunkSize) {
+      result.push(words.slice(i, i + chunkSize).join(" "));
+    }
+    return result;
+  }, [line]);
+
+  // Scrambled order (randomized on mount and line change)
+  const scrambledOrder = useMemo(() => {
+    const indices = chunks.map((_, i) => i);
+    // Fisher-Yates shuffle
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices;
+  }, [chunks, currentLineIndex]);
+
+  const [selectedOrder, setSelectedOrder] = useState<number[]>([]);
+  const [availableChunks, setAvailableChunks] = useState<number[]>(scrambledOrder);
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+
+  // Reset state when line changes
+  useEffect(() => {
+    setSelectedOrder([]);
+    setAvailableChunks(scrambledOrder);
+    setIsCorrect(null);
+  }, [currentLineIndex, scrambledOrder]);
+
+  if (!selectedRole || !line) {
+    navigate("/role-picker");
+    return null;
+  }
+
+  const handleChunkSelect = (chunkIndex: number) => {
+    if (isCorrect !== null) return;
+    
+    setSelectedOrder(prev => [...prev, chunkIndex]);
+    setAvailableChunks(prev => prev.filter(i => i !== chunkIndex));
+  };
+
+  const handleChunkDeselect = (position: number) => {
+    if (isCorrect !== null) return;
+    
+    const chunkIndex = selectedOrder[position];
+    setSelectedOrder(prev => prev.filter((_, i) => i !== position));
+    setAvailableChunks(prev => [...prev, chunkIndex]);
+  };
+
+  const handleCheck = () => {
+    const correct = selectedOrder.every((chunk, index) => chunk === index);
+    setIsCorrect(correct);
+  };
+
+  const handleReset = () => {
+    setSelectedOrder([]);
+    setAvailableChunks(scrambledOrder);
+    setIsCorrect(null);
+  };
+
+  const handleNextReset = () => {
+    setSelectedOrder([]);
+    setIsCorrect(null);
+  };
+
+  const allPlaced = selectedOrder.length === chunks.length;
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <PracticeHeader title="Scramble the Line" />
+
+      <main className="flex-1 flex flex-col px-6 py-6 overflow-y-auto">
+        <div className="max-w-lg mx-auto w-full flex-1 flex flex-col">
+          {/* Cue Line */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 text-muted-foreground mb-2">
+              <Quote className="w-4 h-4" />
+              <span className="text-sm uppercase tracking-wide">Your Cue</span>
+            </div>
+            <div className="p-4 bg-muted/50 rounded-lg border border-border">
+              <p className="font-serif text-base text-foreground italic leading-relaxed">
+                "{line.cue_line}"
+              </p>
+            </div>
+          </div>
+
+          {/* Selected Order (Drop Zone) */}
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground mb-2 text-center">
+              {isCorrect === true 
+                ? "Perfect! You got it right! 🎭" 
+                : isCorrect === false 
+                  ? "Not quite—try again!" 
+                  : "Tap chunks in the correct order"
+              }
+            </p>
+            <div className={`
+              min-h-[100px] p-4 rounded-lg border-2 border-dashed
+              ${isCorrect === true 
+                ? "border-primary bg-primary/5" 
+                : isCorrect === false 
+                  ? "border-destructive bg-destructive/5" 
+                  : "border-border bg-card/50"
+              }
+            `}>
+              {selectedOrder.length === 0 ? (
+                <p className="text-muted-foreground text-center text-sm italic">
+                  Your arranged line will appear here
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {selectedOrder.map((chunkIndex, position) => (
+                    <button
+                      key={`selected-${position}`}
+                      onClick={() => handleChunkDeselect(position)}
+                      disabled={isCorrect !== null}
+                      className={`
+                        px-3 py-2 rounded-md font-serif text-sm transition-all
+                        ${isCorrect !== null 
+                          ? "bg-card border border-border cursor-default" 
+                          : "bg-primary/10 border border-primary/30 hover:bg-primary/20 cursor-pointer"
+                        }
+                      `}
+                    >
+                      {chunks[chunkIndex]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Available Chunks */}
+          {availableChunks.length > 0 && isCorrect === null && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                <Shuffle className="w-4 h-4" />
+                <span className="text-sm">Available chunks</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {availableChunks.map((chunkIndex) => (
+                  <button
+                    key={`available-${chunkIndex}`}
+                    onClick={() => handleChunkSelect(chunkIndex)}
+                    className="px-4 py-3 rounded-lg bg-card border border-border hover:border-primary hover:bg-primary/5 font-serif text-base transition-all shadow-sm"
+                  >
+                    {chunks[chunkIndex]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="mt-auto space-y-3">
+            {isCorrect === null && allPlaced && (
+              <Button
+                variant="default"
+                size="lg"
+                onClick={handleCheck}
+                className="w-full"
+              >
+                <Check className="w-5 h-5 mr-2" />
+                Check My Answer
+              </Button>
+            )}
+
+            {(selectedOrder.length > 0 || isCorrect !== null) && (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleReset}
+                className="w-full"
+              >
+                <RotateCcw className="w-5 h-5 mr-2" />
+                Start Over
+              </Button>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <PracticeNavigation onNext={handleNextReset} />
+    </div>
+  );
+};
+
+export default Scramble;
