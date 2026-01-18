@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useSceneData } from '@/hooks/useSceneData';
-import { ArrowLeft, Save, RefreshCw, Loader2, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Save, RefreshCw, Loader2, Check, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import type { LineBlock } from '@/types/scene';
 
 const ParseReview = () => {
@@ -19,6 +19,7 @@ const ParseReview = () => {
     fetchScene, 
     fetchLineBlocks, 
     updateLineBlock,
+    deleteLineBlock,
     saveLineBlocks,
     loading 
   } = useSceneData();
@@ -103,6 +104,24 @@ const ParseReview = () => {
 
   const toggleExpand = (blockId: string) => {
     setExpandedBlock(prev => prev === blockId ? null : blockId);
+  };
+
+  const handleDeleteBlock = async (blockId: string) => {
+    const success = await deleteLineBlock(blockId);
+    if (success) {
+      setEditedBlocks(prev => prev.filter(block => block.id !== blockId));
+      setExpandedBlock(null);
+      toast({
+        title: 'Line deleted',
+        description: 'The line block has been removed',
+      });
+    } else {
+      toast({
+        title: 'Delete failed',
+        description: 'Failed to delete line block',
+        variant: 'destructive',
+      });
+    }
   };
 
   if (loading && editedBlocks.length === 0) {
@@ -246,6 +265,17 @@ const ParseReview = () => {
                         placeholder="No preceding cue (first line)"
                       />
                     </div>
+                    
+                    {/* Delete Button */}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteBlock(block.id)}
+                      className="w-full"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete This Line
+                    </Button>
                   </CardContent>
                 )}
               </Card>

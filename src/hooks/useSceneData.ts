@@ -347,6 +347,23 @@ export function useSceneData() {
     return data;
   }, []);
 
+  const deleteLineBlock = useCallback(async (blockId: string) => {
+    const { error: deleteError } = await supabase
+      .from('line_blocks')
+      .delete()
+      .eq('id', blockId);
+    
+    if (deleteError) {
+      setError(deleteError.message);
+      return false;
+    }
+    
+    // Update local state
+    setLineBlocks(prev => prev.filter(block => block.id !== blockId));
+    
+    return true;
+  }, []);
+
   const deleteScene = useCallback(async (sceneId: string) => {
     const { error: deleteError } = await supabase
       .from('scenes')
@@ -384,6 +401,7 @@ export function useSceneData() {
     saveCharacters,
     saveStageDirections,
     updateLineBlock,
+    deleteLineBlock,
     deleteScene,
     setCurrentScene,
     setLineBlocks,
