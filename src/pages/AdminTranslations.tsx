@@ -30,6 +30,12 @@ interface TranslationStats {
   error: number;
 }
 
+interface Gpt5Stats {
+  completed: number;
+  pending: number;
+  error: number;
+}
+
 const AdminTranslations = () => {
   const navigate = useNavigate();
   
@@ -38,6 +44,7 @@ const AdminTranslations = () => {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [stats, setStats] = useState<TranslationStats>({ total: 0, completed: 0, pending: 0, error: 0 });
+  const [gpt5Stats, setGpt5Stats] = useState<Gpt5Stats>({ completed: 0, pending: 0, error: 0 });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatingGpt52, setGeneratingGpt52] = useState(false);
@@ -150,15 +157,16 @@ const AdminTranslations = () => {
 
     if (total === 0) {
       setStats({ total: 0, completed: 0, pending: 0, error: 0 });
+      setGpt5Stats({ completed: 0, pending: 0, error: 0 });
       return;
     }
 
     // 2) Translation counts by joining to line_blocks (avoids huge IN(...) lists)
-    const makeTranslationCountQuery = () => {
+    const makeTranslationCountQuery = (style: string) => {
       let q = supabase
         .from("lineblock_translations")
         .select("id, line_blocks!inner(scene_id, section_id)", { count: "exact", head: true })
-        .eq("style", "plain_english")
+        .eq("style", style)
         .eq("line_blocks.scene_id", selectedSceneId);
 
       if (selectedSectionId) {
@@ -168,13 +176,14 @@ const AdminTranslations = () => {
       return q;
     };
 
-    const { count: completedCount, error: completedError } = await makeTranslationCountQuery().eq(
+    // Standard translations (plain_english)
+    const { count: completedCount, error: completedError } = await makeTranslationCountQuery("plain_english").eq(
       "status",
       "complete"
     );
     if (completedError) console.error("Error fetching completed translations:", completedError);
 
-    const { count: errorCount, error: errorStatusError } = await makeTranslationCountQuery().eq(
+    const { count: errorCount, error: errorStatusError } = await makeTranslationCountQuery("plain_english").eq(
       "status",
       "failed"
     );
@@ -186,6 +195,22 @@ const AdminTranslations = () => {
     const pending = Math.max(0, total - completed - error);
 
     setStats({ total, completed, pending, error });
+
+    // GPT-5 translations (plain_english_gpt5)
+    const { count: gpt5CompletedCount } = await makeTranslationCountQuery("plain_english_gpt5").eq(
+      "status",
+      "complete"
+    );
+    const { count: gpt5ErrorCount } = await makeTranslationCountQuery("plain_english_gpt5").eq(
+      "status",
+      "failed"
+    );
+
+    const gpt5Completed = gpt5CompletedCount ?? 0;
+    const gpt5Error = gpt5ErrorCount ?? 0;
+    const gpt5Pending = Math.max(0, total - gpt5Completed - gpt5Error);
+
+    setGpt5Stats({ completed: gpt5Completed, pending: gpt5Pending, error: gpt5Error });
   };
 
   useEffect(() => {
@@ -194,7 +219,7 @@ const AdminTranslations = () => {
 
   // Auto-refresh stats every 5 seconds while generating
   useEffect(() => {
-    if (!generating) return;
+    if (!generating && !generatingGpt52) return;
 
     const interval = setInterval(() => {
       fetchStats();
@@ -494,6 +519,64 @@ const AdminTranslations = () => {
                     </Button>
                   )}
 
+                  {stats.total - stats.completed > 0 && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      {stats.total - stats.completed} standard translations remaining
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* GPT-5 Stats Card */}
+            {selectedSceneId && (
+              <Card className="border-purple-200 dark:border-purple-800">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                    <Sparkles className="w-5 h-5" />
+                    GPT-5 Progress
+                    {generatingGpt52 && (
+                      <Badge className="gap-1 animate-pulse bg-purple-600">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Running
+                      </Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <Badge variant="secondary" className="gap-1">
+                      Total: {stats.total}
+                    </Badge>
+                    <Badge className="gap-1 bg-purple-600">
+                      <CheckCircle className="w-3 h-3" />
+                      Complete: {gpt5Stats.completed}
+                    </Badge>
+                    {gpt5Stats.pending > 0 && (
+                      <Badge variant="outline" className="gap-1 border-purple-300">
+                        <RefreshCw className="w-3 h-3" />
+                        Pending: {gpt5Stats.pending}
+                      </Badge>
+                    )}
+                    {gpt5Stats.error > 0 && (
+                      <Badge variant="destructive" className="gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Errors: {gpt5Stats.error}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Progress 
+                      value={stats.total > 0 ? (gpt5Stats.completed / stats.total) * 100 : 0} 
+                      className="h-3 [&>div]:bg-purple-600" 
+                    />
+                    <p className="text-sm text-muted-foreground text-center">
+                      {stats.total > 0 ? Math.round((gpt5Stats.completed / stats.total) * 100) : 0}% complete
+                      {generatingGpt52 && ' — Generating...'}
+                    </p>
+                  </div>
+
                   {generatingGpt52 ? (
                     <Button
                       onClick={() => { cancelGpt52Ref.current = true; }}
@@ -501,23 +584,22 @@ const AdminTranslations = () => {
                       className="w-full"
                     >
                       <Square className="w-4 h-4 mr-2" />
-                      Cancel GPT-5.2
+                      Cancel GPT-5 Generation
                     </Button>
                   ) : (
                     <Button
                       onClick={handleGenerateGpt52}
                       disabled={stats.total === 0 || generating}
-                      variant="outline"
-                      className="w-full text-purple-600 border-purple-600 hover:bg-purple-50"
+                      className="w-full bg-purple-600 hover:bg-purple-700"
                     >
                       <Sparkles className="w-4 h-4 mr-2" />
-                      Generate GPT-5.2 Translations
+                      Generate GPT-5 Translations
                     </Button>
                   )}
 
-                  {stats.total - stats.completed > 0 && (
+                  {gpt5Stats.pending > 0 && (
                     <p className="text-sm text-muted-foreground text-center">
-                      {stats.total - stats.completed} translations remaining
+                      {gpt5Stats.pending} GPT-5 translations remaining
                     </p>
                   )}
                 </CardContent>
