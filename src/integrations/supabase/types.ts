@@ -14,7 +14,180 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      characters: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          scene_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          scene_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          scene_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "characters_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      line_blocks: {
+        Row: {
+          created_at: string
+          id: string
+          modern_hint: string | null
+          order_index: number
+          preceding_cue_raw: string | null
+          scene_id: string
+          speaker_name: string
+          text_raw: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          modern_hint?: string | null
+          order_index: number
+          preceding_cue_raw?: string | null
+          scene_id: string
+          speaker_name: string
+          text_raw: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          modern_hint?: string | null
+          order_index?: number
+          preceding_cue_raw?: string | null
+          scene_id?: string
+          speaker_name?: string
+          text_raw?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "line_blocks_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practice_attempts: {
+        Row: {
+          character_name: string
+          created_at: string
+          id: string
+          lineblock_id: string | null
+          mode: string
+          scene_id: string
+          success: boolean
+        }
+        Insert: {
+          character_name: string
+          created_at?: string
+          id?: string
+          lineblock_id?: string | null
+          mode: string
+          scene_id: string
+          success?: boolean
+        }
+        Update: {
+          character_name?: string
+          created_at?: string
+          id?: string
+          lineblock_id?: string | null
+          mode?: string
+          scene_id?: string
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_attempts_lineblock_id_fkey"
+            columns: ["lineblock_id"]
+            isOneToOne: false
+            referencedRelation: "line_blocks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_attempts_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scenes: {
+        Row: {
+          created_at: string
+          id: string
+          normalized_text: string | null
+          pdf_text_raw: string | null
+          source_pdf: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          normalized_text?: string | null
+          pdf_text_raw?: string | null
+          source_pdf?: string | null
+          title?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          normalized_text?: string | null
+          pdf_text_raw?: string | null
+          source_pdf?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      stage_directions: {
+        Row: {
+          created_at: string
+          id: string
+          order_index: number
+          scene_id: string
+          text_raw: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          order_index: number
+          scene_id: string
+          text_raw: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          order_index?: number
+          scene_id?: string
+          text_raw?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_directions_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

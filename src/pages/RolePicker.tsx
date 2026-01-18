@@ -1,16 +1,49 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
-import { ArrowLeft, User, Check } from "lucide-react";
+import { useSceneData } from "@/hooks/useSceneData";
+import { ArrowLeft, User, Check, Loader2 } from "lucide-react";
 
 const RolePicker = () => {
-  const { scene, selectedRole, setSelectedRole } = useScene();
+  const { sceneId: paramSceneId } = useParams<{ sceneId?: string }>();
+  const { 
+    selectedRole, setSelectedRole, characters, setCharacters, 
+    setSceneId, setSceneTitle, loadFromLineBlocks, sceneId 
+  } = useScene();
+  const { fetchScene, fetchLineBlocks, fetchCharacters, lineBlocks, loading } = useSceneData();
   const navigate = useNavigate();
 
+  // Load scene data if coming from a specific scene
+  useEffect(() => {
+    if (paramSceneId) {
+      setSceneId(paramSceneId);
+      fetchScene(paramSceneId).then(scene => {
+        if (scene) setSceneTitle(scene.title);
+      });
+      fetchCharacters(paramSceneId).then(chars => {
+        if (chars) setCharacters(chars.map(c => c.name));
+      });
+      fetchLineBlocks(paramSceneId);
+    }
+  }, [paramSceneId, fetchScene, fetchCharacters, fetchLineBlocks, setSceneId, setSceneTitle, setCharacters]);
+
   const handleRoleSelect = (character: string) => {
-    setSelectedRole(character);
+    if (paramSceneId && lineBlocks.length > 0) {
+      loadFromLineBlocks(lineBlocks, character);
+    } else {
+      setSelectedRole(character);
+    }
     navigate("/practice-modes");
   };
+
+  if (loading && characters.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -19,7 +52,7 @@ const RolePicker = () => {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => navigate("/")}
+          onClick={() => navigate(paramSceneId ? "/scenes" : "/")}
           className="mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -36,9 +69,8 @@ const RolePicker = () => {
       {/* Character List */}
       <main className="flex-1 px-6 py-4">
         <div className="max-w-sm mx-auto space-y-3">
-          {scene.characters.map((character) => {
+          {characters.map((character) => {
             const isSelected = selectedRole === character;
-            const lineCount = scene.lines.filter(l => l.character === character).length;
             
             return (
               <button
@@ -64,9 +96,6 @@ const RolePicker = () => {
                     <h2 className="font-serif text-xl font-semibold text-foreground">
                       {character}
                     </h2>
-                    <p className="text-sm text-muted-foreground">
-                      {lineCount} lines to practice
-                    </p>
                   </div>
                 </div>
                 {isSelected && (
@@ -78,7 +107,7 @@ const RolePicker = () => {
         </div>
       </main>
 
-      {/* Encouraging Footer */}
+      {/* Footer */}
       <footer className="px-6 pb-8 text-center">
         <p className="font-serif text-sm text-muted-foreground italic">
           Take your place upon the stage

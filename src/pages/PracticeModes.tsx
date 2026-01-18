@@ -9,42 +9,52 @@ interface PracticeModeOption {
   description: string;
   icon: React.ReactNode;
   path: string;
+  requiresHint?: boolean;
 }
 
-const practiceModes: PracticeModeOption[] = [
-  {
-    id: "cue-say-it",
-    title: "Cue → Say It",
-    description: "See your cue, speak your line, then check yourself",
-    icon: <MessageCircle className="w-6 h-6" />,
-    path: "/practice/cue-say-it"
-  },
-  {
-    id: "first-letter",
-    title: "First-Letter Help",
-    description: "See the first letter of each word as a hint",
-    icon: <Type className="w-6 h-6" />,
-    path: "/practice/first-letter"
-  },
-  {
-    id: "scramble",
-    title: "Scramble the Line",
-    description: "Put the chunks of your line in the right order",
-    icon: <Shuffle className="w-6 h-6" />,
-    path: "/practice/scramble"
-  },
-  {
-    id: "plain-english",
-    title: "Plain English → Shakespeare",
-    description: "Read the modern meaning, then recall the Bard's words",
-    icon: <Languages className="w-6 h-6" />,
-    path: "/practice/plain-english"
-  }
-];
-
 const PracticeModes = () => {
-  const { selectedRole, totalLines, resetProgress } = useScene();
+  const { selectedRole, totalLines, resetProgress, practiceLines } = useScene();
   const navigate = useNavigate();
+
+  // Check if any lines have modern hints
+  const hasModernHints = practiceLines.some(line => line.modern_hint && line.modern_hint.trim() !== '');
+
+  const practiceModes: PracticeModeOption[] = [
+    {
+      id: "cue-say-it",
+      title: "Cue → Say It",
+      description: "See your cue, speak your line, then check yourself",
+      icon: <MessageCircle className="w-6 h-6" />,
+      path: "/practice/cue-say-it"
+    },
+    {
+      id: "first-letter",
+      title: "First-Letter Help",
+      description: "See the first letter of each word as a hint",
+      icon: <Type className="w-6 h-6" />,
+      path: "/practice/first-letter"
+    },
+    {
+      id: "scramble",
+      title: "Scramble the Line",
+      description: "Put the chunks of your line in the right order",
+      icon: <Shuffle className="w-6 h-6" />,
+      path: "/practice/scramble"
+    },
+    {
+      id: "plain-english",
+      title: "Plain English → Shakespeare",
+      description: "Read the modern meaning, then recall the Bard's words",
+      icon: <Languages className="w-6 h-6" />,
+      path: "/practice/plain-english",
+      requiresHint: true
+    }
+  ];
+
+  // Filter modes based on available data
+  const availableModes = practiceModes.filter(mode => 
+    !mode.requiresHint || hasModernHints
+  );
 
   const handleModeSelect = (path: string) => {
     resetProgress();
@@ -85,7 +95,7 @@ const PracticeModes = () => {
       {/* Practice Mode Options */}
       <main className="flex-1 px-6 py-4">
         <div className="max-w-sm mx-auto space-y-3">
-          {practiceModes.map((mode) => (
+          {availableModes.map((mode) => (
             <Button
               key={mode.id}
               variant="practice"
@@ -110,7 +120,7 @@ const PracticeModes = () => {
         </div>
       </main>
 
-      {/* Encouraging Footer */}
+      {/* Footer */}
       <footer className="px-6 pb-8 text-center">
         <p className="font-serif text-sm text-muted-foreground italic">
           Every great performance starts with practice
