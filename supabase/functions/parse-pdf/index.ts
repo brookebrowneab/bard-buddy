@@ -27,24 +27,50 @@ interface ParseResult {
 // Helper: Check if a line is a speaker label
 function isSpeakerLabel(line: string): boolean {
   const trimmed = line.trim();
-  if (trimmed.length < 2 || trimmed.length > 30) return false;
-  
+  if (!trimmed) return false;
+
+  // Allow common punctuation on label-only lines: "LEONATO." / "LEONATO:"
+  const candidate = trimmed.replace(/[.:]$/, '').trim();
+  if (candidate.length < 2 || candidate.length > 30) return false;
+
   // Exclude stage directions and scene headings
-  const upperTrimmed = trimmed.toUpperCase();
-  if (upperTrimmed.startsWith('ACT') || 
-      upperTrimmed.startsWith('SCENE') ||
-      upperTrimmed.startsWith('ENTER') ||
-      upperTrimmed.startsWith('EXIT') ||
-      upperTrimmed.startsWith('EXEUNT') ||
-      upperTrimmed.startsWith('RE-ENTER')) {
+  const upperCandidate = candidate.toUpperCase();
+  if (
+    upperCandidate.startsWith('ACT') ||
+    upperCandidate.startsWith('SCENE') ||
+    upperCandidate.startsWith('ENTER') ||
+    upperCandidate.startsWith('EXIT') ||
+    upperCandidate.startsWith('EXEUNT') ||
+    upperCandidate.startsWith('RE-ENTER')
+  ) {
     return false;
   }
-  
+
   // Check if mostly uppercase letters (allow apostrophes, hyphens, spaces)
-  const cleanedLine = trimmed.replace(/[\s'-]/g, '');
-  const isUppercase = cleanedLine === cleanedLine.toUpperCase() && /^[A-Z]+$/.test(cleanedLine);
-  
+  const cleanedLine = candidate.replace(/[\s'-]/g, '');
+  const isUppercase =
+    cleanedLine === cleanedLine.toUpperCase() && /^[A-Z]+$/.test(cleanedLine);
+
   return isUppercase;
+}
+
+// Helper: detect "INLINE" speaker starts like "LEONATO I learn..."
+function parseInlineSpeakerStart(line: string): { speakerLabel: string; rest: string } | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  // e.g. "DON PEDRO ..." or "FIRST WATCHMAN ..."
+  const match = trimmed.match(/^([A-Z][A-Z'\- ]{1,40}?)[.:]?\s+(.*)$/);
+  if (!match) return null;
+
+  const speakerLabel = match[1].trim().replace(/[\s]+/g, ' ');
+  const rest = (match[2] ?? '').trim();
+
+  // Validate the extracted prefix using the same speaker-label rules
+  if (!isSpeakerLabel(speakerLabel)) return null;
+  if (!rest) return null;
+
+  return { speakerLabel, rest };
 }
 
 // Helper: Check if a line is a stage direction
@@ -131,28 +157,36 @@ function normalizeText(rawText: string): string {
       continue;
     }
     
-    // If it's a speaker label, act/scene heading, or stage direction, keep it separate
-    if (isSpeakerLabel(currentLine) || isActOrSceneHeading(currentLine) || isStageDirection(currentLine)) {
+    // If it's a speaker label (including inline-speaker start), act/scene heading, or stage direction, keep it separate
+    const inlineStart = parseInlineSpeakerStart(currentLine);
+    if (isSpeakerLabel(currentLine) || inlineStart || isActOrSceneHeading(currentLine) || isStageDirection(currentLine)) {
       mergedLines.push(currentLine);
       i++;
       continue;
     }
-    
-    // It's dialogue - merge with following non-label lines
+
+    // It's dialogue - merge with following non-boundary lines
     let dialogueBlock = currentLine;
     i++;
-    
+
     while (i < filteredLines.length) {
       const nextLine = filteredLines[i].trim();
-      
-      if (!nextLine || isSpeakerLabel(nextLine) || isActOrSceneHeading(nextLine) || isStageDirection(nextLine)) {
+
+      const nextInlineStart = parseInlineSpeakerStart(nextLine);
+      if (
+        !nextLine ||
+        isSpeakerLabel(nextLine) ||
+        nextInlineStart ||
+        isActOrSceneHeading(nextLine) ||
+        isStageDirection(nextLine)
+      ) {
         break;
       }
-      
+
       dialogueBlock += ' ' + nextLine;
       i++;
     }
-    
+
     mergedLines.push(dialogueBlock);
   }
   
@@ -171,6 +205,14 @@ function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], sta
   let orderIndex = 0;
   let currentSpeaker: string | null = null;
   let currentDialogue: string[] = [];
+
+  const normalizeSpeakerName = (label: string) =>
+    label
+      .trim()
+      .replace(/[.:]$/, '')
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   
   const flushCurrentBlock = () => {
     if (currentSpeaker && currentDialogue.length > 0) {
@@ -212,17 +254,22 @@ function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], sta
       continue;
     }
     
-    // Handle speaker labels
+    // Handle speaker labels (label-only lines)
     if (isSpeakerLabel(trimmed)) {
       flushCurrentBlock();
-      currentSpeaker = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-      // Normalize to Title Case for names like \"DON PEDRO\" -> \"Don Pedro\"
-      currentSpeaker = trimmed.split(/\s+/).map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-      ).join(' ');
+      currentSpeaker = normalizeSpeakerName(trimmed);
       continue;
     }
-    
+
+    // Handle inline speaker starts like "LEONATO I learn..."
+    const inlineStart = parseInlineSpeakerStart(trimmed);
+    if (inlineStart) {
+      flushCurrentBlock();
+      currentSpeaker = normalizeSpeakerName(inlineStart.speakerLabel);
+      currentDialogue = [inlineStart.rest];
+      continue;
+    }
+
     // It's dialogue
     if (currentSpeaker) {
       currentDialogue.push(trimmed);
