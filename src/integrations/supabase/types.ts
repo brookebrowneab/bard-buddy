@@ -94,6 +94,50 @@ export type Database = {
           },
         ]
       }
+      lineblock_edit_audit: {
+        Row: {
+          action: string
+          changed_at: string
+          changed_by: string | null
+          field_name: string | null
+          id: string
+          lineblock_id: string
+          new_value: string | null
+          old_value: string | null
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          changed_at?: string
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          lineblock_id: string
+          new_value?: string | null
+          old_value?: string | null
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          lineblock_id?: string
+          new_value?: string | null
+          old_value?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lineblock_edit_audit_lineblock_id_fkey"
+            columns: ["lineblock_id"]
+            isOneToOne: false
+            referencedRelation: "line_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lineblock_translations: {
         Row: {
           created_at: string
@@ -270,6 +314,47 @@ export type Database = {
             columns: ["production_id"]
             isOneToOne: false
             referencedRelation: "productions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      script_issues: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          issue_type: string
+          lineblock_id: string
+          note: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          issue_type: string
+          lineblock_id: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          issue_type?: string
+          lineblock_id?: string
+          note?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "script_issues_lineblock_id_fkey"
+            columns: ["lineblock_id"]
+            isOneToOne: false
+            referencedRelation: "line_blocks"
             referencedColumns: ["id"]
           },
         ]

@@ -4,17 +4,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import { 
   Loader2, ChevronLeft, Languages, CheckCircle, AlertCircle, Edit, 
-  RefreshCw, Save, Eye, XCircle, Plus, Play, Square, TriangleAlert
+  RefreshCw, Save, Eye, XCircle, Plus, Play, Square, TriangleAlert,
+  Flag, Scissors, AlertTriangle, Database
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
+import { 
+  CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING,
+  getSuspiciousReasons, SUSPICIOUS_HEURISTICS
+} from "@/config/canonicalScenes";
 
 interface Scene {
   id: string;
@@ -30,6 +39,13 @@ interface ScriptSection {
 
 interface Character {
   name: string;
+}
+
+interface ScriptIssue {
+  id: string;
+  issue_type: string;
+  status: string;
+  note: string | null;
 }
 
 interface LineBlockWithTranslation {
@@ -48,15 +64,27 @@ interface LineBlockWithTranslation {
     error: string | null;
     style: string;
   };
-  // Debug fields
-  translation_row_exists: boolean;
-  translation_id: string | null;
-  translation_style: string | null;
-  translation_status_raw: string | null;
-  translation_text_length: number;
+  script_issues?: ScriptIssue[];
+  suspicious_reasons?: string[];
+}
+
+interface DataHealthStats {
+  canonical_count: number;
+  non_canonical_count: number;
+  translations_count: number;
 }
 
 const STYLE = "plain_english";
+
+const ISSUE_TYPES = [
+  { value: 'wrong_speaker', label: 'Wrong Speaker' },
+  { value: 'needs_split', label: 'Needs Split' },
+  { value: 'needs_merge', label: 'Needs Merge' },
+  { value: 'wrong_order', label: 'Wrong Order' },
+  { value: 'stage_direction_misparsed', label: 'Stage Direction Misparsed' },
+  { value: 'duplicate_text', label: 'Duplicate Text' },
+  { value: 'other', label: 'Other' },
+];
 
 const AdminTranslationsReview = () => {
   const navigate = useNavigate();
@@ -69,6 +97,9 @@ const AdminTranslationsReview = () => {
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [reviewFilter, setReviewFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [showSuspicious, setShowSuspicious] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   
   const [lineBlocks, setLineBlocks] = useState<LineBlockWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +112,18 @@ const AdminTranslationsReview = () => {
   
   const [generating, setGenerating] = useState(false);
   const cancelRef = useRef(false);
+  
+  // Flag issue dialog
+  const [showFlagDialog, setShowFlagDialog] = useState(false);
+  const [flagIssueType, setFlagIssueType] = useState("other");
+  const [flagNote, setFlagNote] = useState("");
+  const [flagging, setFlagging] = useState(false);
+  
+  // Data health stats
+  const [healthStats, setHealthStats] = useState<DataHealthStats | null>(null);
+  
+  // Bulk actions
+  const [bulkActioning, setBulkActioning] = useState(false);
 
   // Check admin status
   useEffect(() => {
@@ -111,6 +154,44 @@ const AdminTranslationsReview = () => {
     checkAdmin();
   }, [navigate]);
 
+  // Fetch data health stats
+  useEffect(() => {
+    const fetchHealthStats = async () => {
+      const [canonical, nonCanonical] = await Promise.all([
+        supabase
+          .from('line_blocks')
+          .select('id', { count: 'exact', head: true })
+          .eq('scene_id', CANONICAL_SCENE_ID),
+        supabase
+          .from('line_blocks')
+          .select('id', { count: 'exact', head: true })
+          .neq('scene_id', CANONICAL_SCENE_ID),
+      ]);
+
+      // For translations, get block IDs first then count
+      const { data: transData } = await supabase
+        .from('line_blocks')
+        .select('id')
+        .eq('scene_id', CANONICAL_SCENE_ID);
+      
+      const blockIds = transData?.map(b => b.id) || [];
+      const { count: transCount } = await supabase
+        .from('lineblock_translations')
+        .select('id', { count: 'exact', head: true })
+        .eq('style', STYLE)
+        .eq('status', 'complete')
+        .in('lineblock_id', blockIds.length > 0 ? blockIds : ['none']);
+
+      setHealthStats({
+        canonical_count: canonical.count || 0,
+        non_canonical_count: nonCanonical.count || 0,
+        translations_count: transCount || 0,
+      });
+    };
+
+    if (isAdmin) fetchHealthStats();
+  }, [isAdmin]);
+
   // Fetch scenes
   useEffect(() => {
     const fetchScenes = async () => {
@@ -119,17 +200,19 @@ const AdminTranslationsReview = () => {
         .select('id, title')
         .order('created_at', { ascending: false });
 
-      setScenes(data || []);
-      // Default to canonical scene if available, otherwise first scene
-      if (data && data.length > 0) {
-        const canonicalScene = data.find(s => s.id === CANONICAL_SCENE_ID);
-        setSelectedSceneId(canonicalScene?.id || data[0].id);
+      // Filter to only canonical by default unless showDuplicates is on
+      const filtered = showDuplicates ? data : data?.filter(s => isCanonicalScene(s.id));
+      setScenes(filtered || []);
+      
+      if (filtered && filtered.length > 0) {
+        const canonicalScene = filtered.find(s => s.id === CANONICAL_SCENE_ID);
+        setSelectedSceneId(canonicalScene?.id || filtered[0].id);
       }
       setLoading(false);
     };
 
     if (isAdmin) fetchScenes();
-  }, [isAdmin]);
+  }, [isAdmin, showDuplicates]);
 
   // Fetch sections when scene changes
   useEffect(() => {
@@ -193,7 +276,7 @@ const AdminTranslationsReview = () => {
       return;
     }
 
-    // Fetch translations with style included for debugging
+    // Fetch translations
     const blockIds = blocks.map(b => b.id);
     const { data: translations } = await supabase
       .from('lineblock_translations')
@@ -201,25 +284,45 @@ const AdminTranslationsReview = () => {
       .in('lineblock_id', blockIds)
       .eq('style', STYLE);
 
+    // Fetch script issues
+    const { data: issues } = await supabase
+      .from('script_issues')
+      .select('id, lineblock_id, issue_type, status, note')
+      .in('lineblock_id', blockIds)
+      .eq('status', 'open');
+
     const translationMap = new Map(
       (translations || []).map(t => [t.lineblock_id, t])
     );
+
+    const issuesMap = new Map<string, ScriptIssue[]>();
+    (issues || []).forEach(issue => {
+      const existing = issuesMap.get(issue.lineblock_id) || [];
+      existing.push(issue);
+      issuesMap.set(issue.lineblock_id, existing);
+    });
 
     // Map sections
     const sectionMap = new Map(sections.map(s => [s.id, s]));
 
     let result: LineBlockWithTranslation[] = blocks.map(block => {
       const translation = translationMap.get(block.id);
+      const blockIssues = issuesMap.get(block.id);
+      const suspiciousReasons = getSuspiciousReasons({
+        text_raw: block.text_raw,
+        speaker_name: block.speaker_name,
+        translation: translation ? { 
+          status: translation.status, 
+          translation_text: translation.translation_text 
+        } : undefined,
+      });
+      
       return {
         ...block,
         section: block.section_id ? sectionMap.get(block.section_id) : undefined,
         translation: translation ? { ...translation, style: translation.style } : undefined,
-        // Debug fields
-        translation_row_exists: !!translation,
-        translation_id: translation?.id || null,
-        translation_style: translation?.style || null,
-        translation_status_raw: translation?.status || null,
-        translation_text_length: translation?.translation_text?.length || 0,
+        script_issues: blockIssues,
+        suspicious_reasons: suspiciousReasons,
       };
     });
 
@@ -236,20 +339,28 @@ const AdminTranslationsReview = () => {
       result = result.filter(lb => lb.translation?.review_status === reviewFilter);
     }
 
+    if (sourceFilter !== "all") {
+      result = result.filter(lb => lb.translation?.source === sourceFilter);
+    }
+
+    if (showSuspicious) {
+      result = result.filter(lb => (lb.suspicious_reasons?.length || 0) > 0);
+    }
+
     setLineBlocks(result);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchLineBlocks();
-  }, [selectedSceneId, selectedSectionId, selectedCharacter, statusFilter, reviewFilter, sections]);
+  }, [selectedSceneId, selectedSectionId, selectedCharacter, statusFilter, reviewFilter, sourceFilter, showSuspicious, sections]);
 
   const openDetail = (line: LineBlockWithTranslation) => {
     setSelectedLine(line);
     setEditText(line.translation?.translation_text || "");
   };
 
-  const handleSave = async (reviewStatus?: string) => {
+  const handleSave = async (reviewStatus?: string, source?: string) => {
     if (!selectedLine) return;
     
     setSaving(true);
@@ -270,6 +381,7 @@ const AdminTranslationsReview = () => {
             style: STYLE,
             translation_text: editText,
             review_status: reviewStatus || selectedLine.translation?.review_status || "needs_review",
+            source: source || (selectedLine.translation?.source === 'ai' ? 'ai_edited' : selectedLine.translation?.source || 'manual'),
           }),
         }
       );
@@ -349,6 +461,33 @@ const AdminTranslationsReview = () => {
     }
   };
 
+  const handleFlagIssue = async () => {
+    if (!selectedLine) return;
+    
+    setFlagging(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      await supabase.from('script_issues').insert({
+        lineblock_id: selectedLine.id,
+        issue_type: flagIssueType,
+        note: flagNote || null,
+        created_by: user.id,
+      });
+
+      toast.success("Issue flagged");
+      setShowFlagDialog(false);
+      setFlagNote("");
+      setFlagIssueType("other");
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to flag issue");
+    } finally {
+      setFlagging(false);
+    }
+  };
+
   const handleBulkGenerate = async () => {
     if (!selectedSceneId) return;
 
@@ -404,6 +543,77 @@ const AdminTranslationsReview = () => {
     }
   };
 
+  // Bulk actions
+  const handleBulkApprove = async () => {
+    const toApprove = lineBlocks.filter(lb => 
+      lb.translation?.status === 'complete' && 
+      lb.translation?.review_status !== 'approved'
+    );
+    
+    if (toApprove.length === 0) {
+      toast.info('No blocks to approve in current view');
+      return;
+    }
+
+    setBulkActioning(true);
+    try {
+      const updates = toApprove.map(lb => ({
+        lineblock_id: lb.id,
+        style: STYLE,
+        review_status: 'approved',
+        translation_text: lb.translation!.translation_text,
+        status: 'complete',
+        source: lb.translation!.source,
+      }));
+
+      await supabase
+        .from('lineblock_translations')
+        .upsert(updates, { onConflict: 'lineblock_id,style' });
+
+      toast.success(`Approved ${toApprove.length} translations`);
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to bulk approve');
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  const handleBulkMarkNeedsReview = async () => {
+    const toMark = lineBlocks.filter(lb => 
+      lb.translation?.status === 'complete' && 
+      lb.translation?.review_status === 'approved'
+    );
+    
+    if (toMark.length === 0) {
+      toast.info('No approved blocks in current view');
+      return;
+    }
+
+    setBulkActioning(true);
+    try {
+      const updates = toMark.map(lb => ({
+        lineblock_id: lb.id,
+        style: STYLE,
+        review_status: 'needs_review',
+        translation_text: lb.translation!.translation_text,
+        status: 'complete',
+        source: lb.translation!.source,
+      }));
+
+      await supabase
+        .from('lineblock_translations')
+        .upsert(updates, { onConflict: 'lineblock_id,style' });
+
+      toast.success(`Marked ${toMark.length} as needs review`);
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to bulk mark');
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
   const getStatusBadge = (translation?: LineBlockWithTranslation['translation']) => {
     if (!translation || translation.status === 'missing') {
       return <Badge variant="outline">Missing</Badge>;
@@ -429,6 +639,20 @@ const AdminTranslationsReview = () => {
     return <Badge variant="outline"><Eye className="w-3 h-3 mr-1" />Needs Review</Badge>;
   };
 
+  const getSourceBadge = (source?: string) => {
+    if (!source) return null;
+    switch (source) {
+      case 'ai':
+        return <Badge variant="secondary">AI</Badge>;
+      case 'ai_edited':
+        return <Badge className="bg-purple-600">AI Edited</Badge>;
+      case 'manual':
+        return <Badge className="bg-orange-600">Manual</Badge>;
+      default:
+        return <Badge variant="outline">{source}</Badge>;
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -451,6 +675,10 @@ const AdminTranslationsReview = () => {
               Translation Review
             </h1>
           </div>
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin/script-fix')}>
+            <Scissors className="w-4 h-4 mr-2" />
+            Script Fix
+          </Button>
           {generating ? (
             <Button variant="destructive" size="sm" onClick={() => { cancelRef.current = true; }}>
               <Square className="w-4 h-4 mr-2" />
@@ -464,6 +692,42 @@ const AdminTranslationsReview = () => {
           )}
         </div>
       </header>
+
+      {/* Data Health Card */}
+      {healthStats && (
+        <div className="border-b border-border bg-muted/20 p-4">
+          <div className="max-w-7xl mx-auto">
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Database className="w-4 h-4" />
+                  Data Health
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-2">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Canonical Blocks:</span>
+                    <span className="ml-2 font-medium">{healthStats.canonical_count}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Non-Canonical:</span>
+                    <span className="ml-2 font-medium text-orange-600">{healthStats.non_canonical_count}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Translations ({STYLE}):</span>
+                    <span className="ml-2 font-medium text-green-600">{healthStats.translations_count}</span>
+                  </div>
+                </div>
+                <Progress 
+                  value={(healthStats.translations_count / healthStats.canonical_count) * 100} 
+                  className="mt-3 h-2"
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* Warning for non-canonical scenes */}
       {selectedSceneId && !isCanonicalScene(selectedSceneId) && (
@@ -479,57 +743,111 @@ const AdminTranslationsReview = () => {
 
       {/* Filters */}
       <div className="border-b border-border bg-muted/30 p-4">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-3">
-          <Select value={selectedSceneId || undefined} onValueChange={setSelectedSceneId}>
-            <SelectTrigger><SelectValue placeholder="Scene" /></SelectTrigger>
-            <SelectContent>
-              {scenes.map(s => (
-                <SelectItem key={s.id} value={s.id}>{getSceneLabel(s.id, s.title)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="max-w-7xl mx-auto space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <Select value={selectedSceneId || undefined} onValueChange={setSelectedSceneId}>
+              <SelectTrigger><SelectValue placeholder="Scene" /></SelectTrigger>
+              <SelectContent>
+                {scenes.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{getSceneLabel(s.id, s.title)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={selectedSectionId || "all"} onValueChange={v => setSelectedSectionId(v === "all" ? null : v)}>
-            <SelectTrigger><SelectValue placeholder="Section" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sections</SelectItem>
-              {sections.map(s => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.act_number && s.scene_number ? `Act ${s.act_number}, Sc ${s.scene_number}` : s.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select value={selectedSectionId || "all"} onValueChange={v => setSelectedSectionId(v === "all" ? null : v)}>
+              <SelectTrigger><SelectValue placeholder="Section" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sections</SelectItem>
+                {sections.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.act_number && s.scene_number ? `Act ${s.act_number}, Sc ${s.scene_number}` : s.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={selectedCharacter || "all"} onValueChange={v => setSelectedCharacter(v === "all" ? null : v)}>
-            <SelectTrigger><SelectValue placeholder="Character" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Characters</SelectItem>
-              {characters.map(c => (
-                <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select value={selectedCharacter || "all"} onValueChange={v => setSelectedCharacter(v === "all" ? null : v)}>
+              <SelectTrigger><SelectValue placeholder="Character" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Characters</SelectItem>
+                {characters.map(c => (
+                  <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="missing">Missing</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="complete">Complete</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="missing">Missing</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="complete">Complete</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={reviewFilter} onValueChange={setReviewFilter}>
-            <SelectTrigger><SelectValue placeholder="Review" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Reviews</SelectItem>
-              <SelectItem value="needs_review">Needs Review</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={reviewFilter} onValueChange={setReviewFilter}>
+              <SelectTrigger><SelectValue placeholder="Review" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Reviews</SelectItem>
+                <SelectItem value="needs_review">Needs Review</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger><SelectValue placeholder="Source" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="ai">AI</SelectItem>
+                <SelectItem value="ai_edited">AI Edited</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Switch 
+                id="suspicious" 
+                checked={showSuspicious} 
+                onCheckedChange={setShowSuspicious} 
+              />
+              <Label htmlFor="suspicious" className="text-sm cursor-pointer">
+                Only Suspicious Blocks
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch 
+                id="duplicates" 
+                checked={showDuplicates} 
+                onCheckedChange={setShowDuplicates} 
+              />
+              <Label htmlFor="duplicates" className="text-sm cursor-pointer">
+                Include Duplicate Scenes
+              </Label>
+            </div>
+            <div className="flex-1" />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleBulkApprove}
+              disabled={bulkActioning}
+            >
+              <CheckCircle className="w-4 h-4 mr-1" />
+              Approve All Shown
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleBulkMarkNeedsReview}
+              disabled={bulkActioning}
+            >
+              <Eye className="w-4 h-4 mr-1" />
+              Mark All Needs Review
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -546,17 +864,13 @@ const AdminTranslationsReview = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-24">Location</TableHead>
-                  <TableHead className="w-32">Speaker</TableHead>
+                  <TableHead className="w-20">Location</TableHead>
+                  <TableHead className="w-28">Speaker</TableHead>
                   <TableHead>Original (excerpt)</TableHead>
-                  <TableHead className="w-28">Status</TableHead>
-                  <TableHead className="w-32">Review</TableHead>
-                  {/* DEBUG COLUMNS */}
-                  <TableHead className="w-20 bg-yellow-100 dark:bg-yellow-900">Row Exists</TableHead>
-                  <TableHead className="w-32 bg-yellow-100 dark:bg-yellow-900">Trans ID</TableHead>
-                  <TableHead className="w-24 bg-yellow-100 dark:bg-yellow-900">Style</TableHead>
-                  <TableHead className="w-24 bg-yellow-100 dark:bg-yellow-900">Status Raw</TableHead>
-                  <TableHead className="w-20 bg-yellow-100 dark:bg-yellow-900">Text Len</TableHead>
+                  <TableHead className="w-24">Status</TableHead>
+                  <TableHead className="w-28">Review</TableHead>
+                  <TableHead className="w-24">Source</TableHead>
+                  <TableHead className="w-32">Flags</TableHead>
                   <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -577,21 +891,22 @@ const AdminTranslationsReview = () => {
                     </TableCell>
                     <TableCell>{getStatusBadge(line.translation)}</TableCell>
                     <TableCell>{getReviewBadge(line.translation)}</TableCell>
-                    {/* DEBUG COLUMNS */}
-                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
-                      {line.translation_row_exists ? '✅ true' : '❌ false'}
-                    </TableCell>
-                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs font-mono truncate max-w-[120px]">
-                      {line.translation_id || '-'}
-                    </TableCell>
-                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
-                      {line.translation_style || '-'}
-                    </TableCell>
-                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
-                      {line.translation_status_raw || 'missing'}
-                    </TableCell>
-                    <TableCell className="bg-yellow-50 dark:bg-yellow-900/30 text-xs">
-                      {line.translation_text_length}
+                    <TableCell>{getSourceBadge(line.translation?.source)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(line.script_issues?.length || 0) > 0 && (
+                          <Badge variant="destructive" className="text-xs">
+                            <Flag className="w-3 h-3 mr-1" />
+                            {line.script_issues?.length} issue(s)
+                          </Badge>
+                        )}
+                        {(line.suspicious_reasons?.length || 0) > 0 && (
+                          <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            Suspicious
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); openDetail(line); }}>
@@ -615,14 +930,42 @@ const AdminTranslationsReview = () => {
                 <SheetTitle className="flex items-center gap-2">
                   <Badge variant="secondary">{selectedLine.speaker_name}</Badge>
                   <span className="text-sm text-muted-foreground">#{selectedLine.order_index}</span>
+                  {(selectedLine.script_issues?.length || 0) > 0 && (
+                    <Badge variant="destructive"><Flag className="w-3 h-3 mr-1" />Has Issues</Badge>
+                  )}
                 </SheetTitle>
               </SheetHeader>
 
               <div className="mt-6 space-y-6">
+                {/* Suspicious warnings */}
+                {(selectedLine.suspicious_reasons?.length || 0) > 0 && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Suspicious:</strong> {selectedLine.suspicious_reasons?.join(', ')}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Script issues */}
+                {(selectedLine.script_issues?.length || 0) > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">Open Issues</h4>
+                    {selectedLine.script_issues?.map(issue => (
+                      <Alert key={issue.id} variant="destructive">
+                        <Flag className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>{ISSUE_TYPES.find(t => t.value === issue.issue_type)?.label || issue.issue_type}:</strong> {issue.note || 'No note'}
+                        </AlertDescription>
+                      </Alert>
+                    ))}
+                  </div>
+                )}
+
                 {/* Original Text */}
                 <div>
                   <h4 className="text-sm font-medium mb-2">Original Text</h4>
-                  <div className="p-4 bg-muted rounded-lg font-serif text-sm leading-relaxed">
+                  <div className="p-4 bg-muted rounded-lg font-serif text-sm leading-relaxed whitespace-pre-wrap">
                     {selectedLine.text_raw}
                   </div>
                 </div>
@@ -631,11 +974,7 @@ const AdminTranslationsReview = () => {
                 <div>
                   <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                     Translation
-                    {selectedLine.translation?.source && (
-                      <Badge variant="outline" className="text-xs">
-                        {selectedLine.translation.source}
-                      </Badge>
-                    )}
+                    {selectedLine.translation?.source && getSourceBadge(selectedLine.translation.source)}
                   </h4>
                   <Textarea
                     value={editText}
@@ -666,6 +1005,11 @@ const AdminTranslationsReview = () => {
                     <Eye className="w-4 h-4 mr-2" />
                     Save as Needs Review
                   </Button>
+
+                  <Button variant="outline" onClick={() => handleSave(undefined, "manual")} disabled={saving || !editText.trim()}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Save as Manual
+                  </Button>
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
@@ -683,19 +1027,75 @@ const AdminTranslationsReview = () => {
                     <XCircle className="w-4 h-4 mr-2" />
                     Mark Failed
                   </Button>
+                </div>
 
-                  {!selectedLine.translation && (
-                    <Button variant="outline" onClick={() => setEditText("")}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Manual
-                    </Button>
-                  )}
+                <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowFlagDialog(true)}
+                  >
+                    <Flag className="w-4 h-4 mr-2" />
+                    Flag Parser Issue
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    onClick={() => navigate('/admin/script-fix')}
+                  >
+                    <Scissors className="w-4 h-4 mr-2" />
+                    Open Script Fix
+                  </Button>
                 </div>
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Flag Issue Dialog */}
+      <Dialog open={showFlagDialog} onOpenChange={setShowFlagDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Flag Parser Issue</DialogTitle>
+            <DialogDescription>
+              Report a parsing problem with this line block
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Issue Type</Label>
+              <Select value={flagIssueType} onValueChange={setFlagIssueType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ISSUE_TYPES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Note (optional)</Label>
+              <Textarea 
+                value={flagNote}
+                onChange={(e) => setFlagNote(e.target.value)}
+                placeholder="Describe the issue..."
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFlagDialog(false)}>Cancel</Button>
+            <Button onClick={handleFlagIssue} disabled={flagging}>
+              {flagging ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Flag className="w-4 h-4 mr-2" />}
+              Flag Issue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
