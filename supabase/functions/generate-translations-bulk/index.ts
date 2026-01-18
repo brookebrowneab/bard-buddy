@@ -8,8 +8,8 @@ const corsHeaders = {
 
 const PROMPT_VERSION = "v1.0";
 const MODEL = "gpt-4o-mini";
-const BATCH_SIZE = 5;
-const DELAY_BETWEEN_BATCHES_MS = 1000;
+// Process max 10 lines per request to avoid timeout (edge functions have 60s limit)
+const MAX_LINES_PER_REQUEST = 10;
 
 const SYSTEM_PROMPT = `You are a Shakespeare translator. Given a line of Shakespearean text, provide a clear, simple modern English translation that a child could understand.
 
@@ -20,9 +20,6 @@ Rules:
 - Preserve the emotional tone and meaning
 - Do not add explanations or context`;
 
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -129,148 +126,103 @@ serve(async (req) => {
     const existingIds = new Set((existingTranslations || []).map(t => t.lineblock_id));
     const missingBlocks = lineBlocks.filter(lb => !existingIds.has(lb.id));
 
-    if (missingBlocks.length === 0) {
+    // Only process up to MAX_LINES_PER_REQUEST to avoid timeout
+    const blocksToProcess = missingBlocks.slice(0, MAX_LINES_PER_REQUEST);
+    const hasMore = missingBlocks.length > MAX_LINES_PER_REQUEST;
+
+    if (blocksToProcess.length === 0) {
       return new Response(JSON.stringify({ 
         success: true, 
         message: 'All translations already complete',
         total: lineBlocks.length,
         processed: 0,
-        already_complete: lineBlocks.length
+        already_complete: lineBlocks.length,
+        has_more: false
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Create or update job record
-    const { data: job, error: jobError } = await supabase
-      .from('translation_jobs')
-      .upsert({
-        scene_id,
-        section_id: section_id || null,
-        style,
-        status: 'processing',
-        total_lines: lineBlocks.length,
-        completed_lines: existingIds.size,
-        error: null,
-      }, {
-        onConflict: 'id',
-      })
-      .select()
-      .single();
-
-    // Process in batches
+    // Process all lines in this batch in parallel
     let processed = 0;
     let errors = 0;
 
-    for (let i = 0; i < missingBlocks.length; i += BATCH_SIZE) {
-      const batch = missingBlocks.slice(i, i + BATCH_SIZE);
-      
-      // Process batch in parallel
-      const batchPromises = batch.map(async (block) => {
-        try {
-          // Mark as processing
-          await supabase
-            .from('lineblock_translations')
-            .upsert({
-              lineblock_id: block.id,
-              style,
-              status: 'processing',
-              model: MODEL,
-              prompt_version: PROMPT_VERSION,
-            }, {
-              onConflict: 'lineblock_id,style',
-            });
-
-          // Call OpenAI
-          const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openaiApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: MODEL,
-              messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
-              ],
-              max_tokens: 200,
-              temperature: 0.3,
-            }),
+    const batchPromises = blocksToProcess.map(async (block) => {
+      try {
+        // Mark as processing
+        await supabase
+          .from('lineblock_translations')
+          .upsert({
+            lineblock_id: block.id,
+            style,
+            status: 'processing',
+            model: MODEL,
+            prompt_version: PROMPT_VERSION,
+          }, {
+            onConflict: 'lineblock_id,style',
           });
 
-          if (!openaiResponse.ok) {
-            throw new Error(`OpenAI API error: ${openaiResponse.status}`);
-          }
+        // Call OpenAI
+        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
+            ],
+            max_tokens: 200,
+            temperature: 0.3,
+          }),
+        });
 
-          const openaiData = await openaiResponse.json();
-          const translationText = openaiData.choices?.[0]?.message?.content?.trim();
-
-          if (!translationText) {
-            throw new Error('Empty response from OpenAI');
-          }
-
-          // Save translation
-          await supabase
-            .from('lineblock_translations')
-            .update({
-              translation_text: translationText,
-              status: 'completed',
-              error: null,
-            })
-            .eq('lineblock_id', block.id)
-            .eq('style', style);
-
-          return { success: true };
-        } catch (error) {
-          console.error(`Error translating ${block.id}:`, error);
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          
-          await supabase
-            .from('lineblock_translations')
-            .update({
-              status: 'error',
-              error: errorMessage,
-            })
-            .eq('lineblock_id', block.id)
-            .eq('style', style);
-
-          return { success: false, error: errorMessage };
+        if (!openaiResponse.ok) {
+          throw new Error(`OpenAI API error: ${openaiResponse.status}`);
         }
-      });
 
-      const results = await Promise.all(batchPromises);
-      const batchSuccesses = results.filter(r => r.success).length;
-      processed += batchSuccesses;
-      errors += results.filter(r => !r.success).length;
+        const openaiData = await openaiResponse.json();
+        const translationText = openaiData.choices?.[0]?.message?.content?.trim();
 
-      // Update job progress
-      if (job) {
+        if (!translationText) {
+          throw new Error('Empty response from OpenAI');
+        }
+
+        // Save translation
         await supabase
-          .from('translation_jobs')
+          .from('lineblock_translations')
           .update({
-            completed_lines: existingIds.size + processed,
+            translation_text: translationText,
+            status: 'completed',
+            error: null,
           })
-          .eq('id', job.id);
-      }
+          .eq('lineblock_id', block.id)
+          .eq('style', style);
 
-      // Rate limiting delay between batches
-      if (i + BATCH_SIZE < missingBlocks.length) {
-        await delay(DELAY_BETWEEN_BATCHES_MS);
-      }
-    }
+        return { success: true };
+      } catch (error) {
+        console.error(`Error translating ${block.id}:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        await supabase
+          .from('lineblock_translations')
+          .update({
+            status: 'error',
+            error: errorMessage,
+          })
+          .eq('lineblock_id', block.id)
+          .eq('style', style);
 
-    // Update job as complete
-    if (job) {
-      await supabase
-        .from('translation_jobs')
-        .update({
-          status: errors > 0 ? 'error' : 'completed',
-          completed_lines: existingIds.size + processed,
-          error: errors > 0 ? `${errors} translations failed` : null,
-        })
-        .eq('id', job.id);
-    }
+        return { success: false, error: errorMessage };
+      }
+    });
+
+    const results = await Promise.all(batchPromises);
+    processed = results.filter(r => r.success).length;
+    errors = results.filter(r => !r.success).length;
 
     return new Response(JSON.stringify({ 
       success: true,
@@ -278,6 +230,8 @@ serve(async (req) => {
       already_complete: existingIds.size,
       processed,
       errors,
+      has_more: hasMore,
+      remaining: missingBlocks.length - processed,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
