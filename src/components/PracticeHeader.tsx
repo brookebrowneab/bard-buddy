@@ -14,12 +14,8 @@ const PracticeHeader = ({ title }: PracticeHeaderProps) => {
   const progress = ((currentLineIndex + 1) / totalLines) * 100;
 
   const handleBack = () => {
-    // Go back to role picker for the current section
-    if (selectedSection) {
-      navigate(`/role-picker/${selectedSection.id}`);
-    } else {
-      navigate('/scenes');
-    }
+    // Go back to scene choice
+    navigate('/scenes');
   };
 
   return (

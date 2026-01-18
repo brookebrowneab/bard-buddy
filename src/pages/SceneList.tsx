@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { useScene } from '@/context/SceneContext';
-import { useProduction } from '@/hooks/useProduction';
+import { useSceneData } from '@/hooks/useSceneData';
 import { ArrowLeft, Layers, Loader2, Play } from 'lucide-react';
 import type { ScriptSection } from '@/types/scene';
 
@@ -11,43 +11,56 @@ const SceneList = () => {
   const navigate = useNavigate();
   const { 
     selectedMode, 
-    setActiveScriptId, 
-    setProductionName,
+    selectedRole,
+    activeScriptId,
+    productionName,
     setSelectedSection,
   } = useScene();
-  const { 
-    production, 
-    sections, 
-    loading, 
-    fetchActiveProduction, 
-    fetchProductionSections 
-  } = useProduction();
+  const { getSectionsForCharacter, loading } = useSceneData();
 
+  const [sections, setSections] = React.useState<ScriptSection[]>([]);
+  const [loadingSections, setLoadingSections] = React.useState(true);
+
+  // Load sections where this character appears
   useEffect(() => {
-    const loadProduction = async () => {
-      const prod = await fetchActiveProduction();
-      if (prod) {
-        setProductionName(prod.name);
-        setActiveScriptId(prod.active_scene_id);
-        if (prod.active_scene_id) {
-          await fetchProductionSections(prod.active_scene_id);
-        }
+    const loadSections = async () => {
+      if (!activeScriptId || !selectedRole) {
+        return;
       }
-    };
-    loadProduction();
-  }, [fetchActiveProduction, fetchProductionSections, setActiveScriptId, setProductionName]);
 
-  // Redirect if no mode selected
+      setLoadingSections(true);
+      const charSections = await getSectionsForCharacter(activeScriptId, selectedRole);
+      setSections(charSections);
+      setLoadingSections(false);
+    };
+
+    loadSections();
+  }, [activeScriptId, selectedRole, getSectionsForCharacter]);
+
+  // Redirect if no mode or role selected
   useEffect(() => {
     if (!selectedMode) {
       navigate('/');
+      return;
     }
-  }, [selectedMode, navigate]);
+    if (!selectedRole) {
+      navigate('/role-picker');
+    }
+  }, [selectedMode, selectedRole, navigate]);
 
   const handleSelectSection = (section: ScriptSection) => {
     setSelectedSection(section);
-    navigate(`/role-picker/${section.id}`);
+    // Go directly to practice mode
+    navigate(selectedMode || '/practice/cue-say-it');
   };
+
+  const handlePracticeAll = () => {
+    // Set section to null to indicate "all sections"
+    setSelectedSection(null);
+    navigate(selectedMode || '/practice/cue-say-it');
+  };
+
+  const isLoading = loading || loadingSections;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -56,43 +69,67 @@ const SceneList = () => {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/role-picker')}
           className="mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Games
+          Back to Characters
         </Button>
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
-          {production?.name || 'Choose a Scene'}
+          Choose a Scene
         </h1>
+        {selectedRole && (
+          <p className="text-center text-primary font-medium mt-1">
+            Scenes with {selectedRole}
+          </p>
+        )}
         <p className="text-center text-muted-foreground mt-2 text-sm">
           {sections.length} scene{sections.length !== 1 ? 's' : ''} available
         </p>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 px-6 py-4">
+      <main className="flex-1 px-6 py-4 overflow-y-auto">
         <div className="max-w-md mx-auto space-y-3">
           {/* Loading */}
-          {loading && sections.length === 0 && (
+          {isLoading && sections.length === 0 && (
             <div className="flex justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           )}
 
           {/* Empty State */}
-          {!loading && sections.length === 0 && (
+          {!isLoading && sections.length === 0 && (
             <Card className="border-dashed">
               <CardHeader className="py-12 text-center">
                 <Layers className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
-                  No scenes available yet
+                  No scenes found for {selectedRole}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Ask an admin to upload a script
-                </p>
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={() => navigate('/role-picker')}
+                >
+                  Choose Different Character
+                </Button>
               </CardHeader>
             </Card>
+          )}
+
+          {/* Practice All option at the top */}
+          {sections.length > 1 && (
+            <button
+              onClick={handlePracticeAll}
+              className="w-full p-5 rounded-lg border-2 border-dashed border-primary/30 text-center transition-all duration-200 hover:border-primary hover:bg-primary/5"
+            >
+              <p className="font-serif text-lg font-semibold text-primary">
+                Practice All Scenes
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                All {sections.length} scenes with {selectedRole}
+              </p>
+            </button>
           )}
 
           {/* Flat list of Act/Scenes */}
@@ -112,11 +149,6 @@ const SceneList = () => {
                       <CardTitle className="text-lg font-semibold text-foreground">
                         {section.title}
                       </CardTitle>
-                      {section.act_number && section.scene_number && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Act {section.act_number}, Scene {section.scene_number}
-                        </p>
-                      )}
                     </div>
                     <Play className="w-5 h-5 text-primary flex-shrink-0" />
                   </div>
@@ -137,4 +169,5 @@ const SceneList = () => {
   );
 };
 
+import React from 'react';
 export default SceneList;

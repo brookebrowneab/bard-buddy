@@ -1,62 +1,61 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
 import { useProduction } from "@/hooks/useProduction";
 import { ArrowLeft, User, Check, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const RolePicker = () => {
-  const { sectionId } = useParams<{ sectionId?: string }>();
   const navigate = useNavigate();
   const { 
     selectedRole, 
     setSelectedRole, 
     characters, 
     setCharacters, 
-    activeScriptId,
-    selectedSection,
-    setSelectedSection,
+    setActiveScriptId,
+    setProductionName,
     selectedMode,
   } = useScene();
-  const { getCharactersInSection, fetchProductionSections, sections } = useProduction();
+  const { fetchActiveProduction } = useProduction();
   
   const [loading, setLoading] = useState(true);
+  const [productionTitle, setProductionTitle] = useState('');
 
-  // Load characters for this section
+  // Load all characters from the active production's script
   useEffect(() => {
     const loadCharacters = async () => {
-      // If we have a sectionId param but no selectedSection, we need to find it
-      if (sectionId && activeScriptId) {
-        setLoading(true);
-        
-        // Fetch sections if we don't have them
-        let sectionsList = sections;
-        if (sections.length === 0) {
-          sectionsList = await fetchProductionSections(activeScriptId);
-        }
-        
-        // Find the section from the list
-        const section = sectionsList.find(s => s.id === sectionId);
-        if (section) {
-          setSelectedSection(section);
-        }
-        
-        // Get characters in this section
-        const chars = await getCharactersInSection(activeScriptId, sectionId);
-        setCharacters(chars);
+      setLoading(true);
+      
+      // Get the active production
+      const prod = await fetchActiveProduction();
+      if (!prod || !prod.active_scene_id) {
         setLoading(false);
-      } else if (selectedSection && activeScriptId) {
-        setLoading(true);
-        const chars = await getCharactersInSection(activeScriptId, selectedSection.id);
-        setCharacters(chars);
-        setLoading(false);
+        return;
       }
+
+      setProductionTitle(prod.name);
+      setProductionName(prod.name);
+      setActiveScriptId(prod.active_scene_id);
+
+      // Get all unique characters from this script
+      const { data: chars, error } = await supabase
+        .from('characters')
+        .select('name')
+        .eq('scene_id', prod.active_scene_id)
+        .order('name', { ascending: true });
+
+      if (!error && chars) {
+        setCharacters(chars.map(c => c.name));
+      }
+      
+      setLoading(false);
     };
 
     loadCharacters();
-  }, [sectionId, activeScriptId, selectedSection, getCharactersInSection, setCharacters, sections, fetchProductionSections, setSelectedSection]);
+  }, [fetchActiveProduction, setActiveScriptId, setProductionName, setCharacters]);
 
-  // Redirect if no section selected
+  // Redirect if no mode selected
   useEffect(() => {
     if (!selectedMode) {
       navigate('/');
@@ -65,8 +64,8 @@ const RolePicker = () => {
 
   const handleRoleSelect = (character: string) => {
     setSelectedRole(character);
-    // Go directly to practice mode since we already have section selected
-    navigate(selectedMode || '/practice/cue-say-it');
+    // Go to scene picker to choose which scene to practice
+    navigate('/scenes');
   };
 
   if (loading) {
@@ -84,40 +83,40 @@ const RolePicker = () => {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => navigate("/scenes")}
+          onClick={() => navigate("/")}
           className="mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Scenes
+          Back to Games
         </Button>
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
-          Choose Your Role
+          Who Are You Playing?
         </h1>
-        {selectedSection && (
+        {productionTitle && (
           <p className="text-center text-primary font-medium mt-1">
-            {selectedSection.title}
+            {productionTitle}
           </p>
         )}
         <p className="text-center text-muted-foreground mt-2 text-sm">
-          {characters.length} character{characters.length !== 1 ? 's' : ''} in this scene
+          {characters.length} character{characters.length !== 1 ? 's' : ''} in this production
         </p>
       </header>
 
       {/* Character List */}
-      <main className="flex-1 px-6 py-4">
+      <main className="flex-1 px-6 py-4 overflow-y-auto">
         <div className="max-w-sm mx-auto space-y-3">
           {characters.length === 0 ? (
             <div className="text-center py-8">
               <User className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
               <p className="text-muted-foreground">
-                No characters found in this scene
+                No characters found
               </p>
               <Button 
                 variant="outline" 
                 className="mt-4"
-                onClick={() => navigate('/scenes')}
+                onClick={() => navigate('/')}
               >
-                Choose Different Scene
+                Back to Games
               </Button>
             </div>
           ) : (
