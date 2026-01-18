@@ -303,6 +303,52 @@ export function useSceneData() {
     return data;
   }, []);
 
+  // Refresh characters by syncing with unique speaker names from line_blocks
+  const refreshCharacters = useCallback(async (sceneId: string) => {
+    // Get unique speaker names from current line blocks
+    const { data: blocks, error: fetchError } = await supabase
+      .from('line_blocks')
+      .select('speaker_name')
+      .eq('scene_id', sceneId);
+    
+    if (fetchError) {
+      setError(fetchError.message);
+      return false;
+    }
+
+    const uniqueSpeakers = [...new Set(blocks?.map(b => b.speaker_name) || [])];
+
+    // Delete all existing characters for this scene
+    const { error: deleteError } = await supabase
+      .from('characters')
+      .delete()
+      .eq('scene_id', sceneId);
+    
+    if (deleteError) {
+      setError(deleteError.message);
+      return false;
+    }
+
+    // Insert only the characters that have lines
+    if (uniqueSpeakers.length > 0) {
+      const { data: newChars, error: insertError } = await supabase
+        .from('characters')
+        .insert(uniqueSpeakers.map(name => ({ scene_id: sceneId, name })))
+        .select();
+      
+      if (insertError) {
+        setError(insertError.message);
+        return false;
+      }
+      
+      setCharacters(newChars || []);
+    } else {
+      setCharacters([]);
+    }
+
+    return true;
+  }, []);
+
   const saveStageDirections = useCallback(async (
     sceneId: string,
     directions: Array<{ order_index: number; text_raw: string }>
@@ -447,6 +493,7 @@ export function useSceneData() {
     updateLineBlock,
     deleteLineBlock,
     convertToStageDirection,
+    refreshCharacters,
     deleteScene,
     setCurrentScene,
     setLineBlocks,
