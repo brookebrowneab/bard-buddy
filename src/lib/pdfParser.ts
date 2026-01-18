@@ -1,12 +1,13 @@
 // PDF.js text extraction utility
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Set worker source using the bundled worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString();
 
 export async function extractTextFromPdf(file: File): Promise<string> {
-  // Dynamically import PDF.js
-  const pdfjsLib = await import('pdfjs-dist');
-  
-  // Set worker source
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-  
   // Read file as array buffer
   const arrayBuffer = await file.arrayBuffer();
   
