@@ -182,7 +182,7 @@ function isStageDirection(line: string): boolean {
 // Helper: Check if a line is an act/scene heading
 function isActOrSceneHeading(line: string): boolean {
   const trimmed = line.trim().toUpperCase();
-  return trimmed.startsWith('ACT') || trimmed.startsWith('SCENE');
+  return trimmed.startsWith('ACT') || trimmed.startsWith('SCENE') || trimmed.startsWith('TITLE');
 }
 
 // Helper: Check if a line is just a page number
@@ -201,26 +201,40 @@ function normalizeText(rawText: string): string {
   text = text.split('\n').map(line => line.replace(/[ \t]+/g, ' ').trim()).join('\n');
   
   // 3. Remove repeated page headers/footers (lines identical on 3+ pages)
+  // IMPORTANT: Do NOT treat speaker labels (e.g. "LEONATO:"), stage directions, or act/scene headings as headers.
+  // Those repeat naturally and must be preserved.
   const lines = text.split('\n');
   const lineCount: Map<string, number> = new Map();
-  
+
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.length > 0 && trimmed.length < 100) {
-      lineCount.set(trimmed, (lineCount.get(trimmed) || 0) + 1);
+    if (trimmed.length === 0 || trimmed.length >= 100) continue;
+
+    // Skip boundaries that are expected to repeat in scripts
+    if (isSpeakerLabel(trimmed) || parseInlineSpeakerStart(trimmed) || isActOrSceneHeading(trimmed) || isStageDirection(trimmed)) {
+      continue;
     }
+
+    lineCount.set(trimmed, (lineCount.get(trimmed) || 0) + 1);
   }
-  
+
   const repeatedLines = new Set<string>();
   for (const [line, count] of lineCount) {
     if (count >= 3) {
       repeatedLines.add(line);
     }
   }
-  
-  // 4. Remove page numbers and repeated lines
+
+  // 4. Remove page numbers and repeated header/footer lines
   const filteredLines = lines.filter(line => {
     const trimmed = line.trim();
+    if (trimmed.length === 0) return false;
+
+    // Never strip speaker labels / boundaries
+    if (isSpeakerLabel(trimmed) || parseInlineSpeakerStart(trimmed) || isActOrSceneHeading(trimmed) || isStageDirection(trimmed)) {
+      return true;
+    }
+
     return !isPageNumber(trimmed) && !repeatedLines.has(trimmed);
   });
   
@@ -290,8 +304,10 @@ function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], sta
       .trim()
       .replace(/[.:]$/, '')
       .split(/\s+/)
+      .filter(Boolean)
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+      .join(' ')
+      .trim();
   
   const flushCurrentBlock = () => {
     if (currentSpeaker && currentDialogue.length > 0) {
