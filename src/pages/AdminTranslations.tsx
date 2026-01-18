@@ -122,41 +122,74 @@ const AdminTranslations = () => {
   const fetchStats = async () => {
     if (!selectedSceneId) return;
 
-    let blockQuery = supabase
+    // Get total line count using count
+    let countQuery = supabase
       .from('line_blocks')
-      .select('id')
+      .select('id', { count: 'exact', head: true })
       .eq('scene_id', selectedSceneId);
 
     if (selectedSectionId) {
-      blockQuery = blockQuery.eq('section_id', selectedSectionId);
+      countQuery = countQuery.eq('section_id', selectedSectionId);
     }
 
-    const { data: blocks, error: blocksError } = await blockQuery;
+    const { count: totalCount, error: countError } = await countQuery;
 
-    if (blocksError || !blocks) {
-      console.error('Error fetching blocks:', blocksError);
+    if (countError) {
+      console.error('Error fetching block count:', countError);
       return;
     }
 
-    const blockIds = blocks.map(b => b.id);
+    const total = totalCount || 0;
     
-    if (blockIds.length === 0) {
+    if (total === 0) {
       setStats({ total: 0, completed: 0, pending: 0, error: 0 });
       return;
     }
 
-    const { data: translations } = await supabase
-      .from('lineblock_translations')
-      .select('status')
-      .in('lineblock_id', blockIds)
-      .eq('style', 'plain_english');
+    // Fetch all block IDs in batches to handle large scripts
+    const batchSize = 1000;
+    let allBlockIds: string[] = [];
+    let offset = 0;
+    
+    while (offset < total) {
+      let blockQuery = supabase
+        .from('line_blocks')
+        .select('id')
+        .eq('scene_id', selectedSceneId)
+        .range(offset, offset + batchSize - 1);
 
-    const completed = (translations || []).filter(t => t.status === 'completed').length;
-    const pending = (translations || []).filter(t => t.status === 'pending' || t.status === 'processing').length;
-    const errorCount = (translations || []).filter(t => t.status === 'error').length;
+      if (selectedSectionId) {
+        blockQuery = blockQuery.eq('section_id', selectedSectionId);
+      }
+
+      const { data: blocks } = await blockQuery;
+      if (blocks) {
+        allBlockIds = [...allBlockIds, ...blocks.map(b => b.id)];
+      }
+      offset += batchSize;
+    }
+
+    // Get translation counts - also batch if needed
+    let completed = 0;
+    let pending = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < allBlockIds.length; i += batchSize) {
+      const batchIds = allBlockIds.slice(i, i + batchSize);
+      
+      const { data: translations } = await supabase
+        .from('lineblock_translations')
+        .select('status')
+        .in('lineblock_id', batchIds)
+        .eq('style', 'plain_english');
+
+      completed += (translations || []).filter(t => t.status === 'completed').length;
+      pending += (translations || []).filter(t => t.status === 'pending' || t.status === 'processing').length;
+      errorCount += (translations || []).filter(t => t.status === 'error').length;
+    }
 
     setStats({
-      total: blockIds.length,
+      total,
       completed,
       pending,
       error: errorCount,
