@@ -52,6 +52,21 @@ const AdminTranslations = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const cancelRef = useRef(false);
   const cancelGpt52Ref = useRef(false);
+  
+  // Diagnostics state
+  const [gpt5Diagnostics, setGpt5Diagnostics] = useState<{
+    lastBatchProcessed: number;
+    lastBatchErrors: number;
+    lastResponse: any;
+    lastError: string | null;
+    lastRunTime: string | null;
+  }>({
+    lastBatchProcessed: 0,
+    lastBatchErrors: 0,
+    lastResponse: null,
+    lastError: null,
+    lastRunTime: null,
+  });
 
   // Check admin status
   useEffect(() => {
@@ -312,6 +327,7 @@ const AdminTranslations = () => {
 
       let hasMore = true;
       let totalProcessed = 0;
+      let totalErrors = 0;
 
       while (hasMore && !cancelGpt52Ref.current) {
         const response = await fetch(
@@ -330,22 +346,38 @@ const AdminTranslations = () => {
         );
 
         const result = await response.json();
+        
+        // Update diagnostics with latest response
+        setGpt5Diagnostics({
+          lastBatchProcessed: result.processed || 0,
+          lastBatchErrors: result.errors || 0,
+          lastResponse: result,
+          lastError: response.ok ? null : (result.error || `HTTP ${response.status}`),
+          lastRunTime: new Date().toISOString(),
+        });
+        
         if (!response.ok) throw new Error(result.error);
 
         totalProcessed += result.processed || 0;
+        totalErrors += result.errors || 0;
         hasMore = result.has_more === true;
         
-        toast.info(`GPT-5.2: Processed ${totalProcessed} (${result.remaining} remaining)`);
+        toast.info(`GPT-5: Processed ${result.processed} (${result.remaining} remaining, ${result.errors || 0} errors)`);
         setRefreshKey(prev => prev + 1);
       }
 
       if (cancelGpt52Ref.current) {
-        toast.info(`Cancelled GPT-5.2 after ${totalProcessed} translations.`);
+        toast.info(`Cancelled GPT-5 after ${totalProcessed} translations.`);
       } else {
-        toast.success(`GPT-5.2 generated ${totalProcessed} translations.`);
+        toast.success(`GPT-5 generated ${totalProcessed} translations (${totalErrors} errors).`);
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to generate GPT-5.2 translations');
+      setGpt5Diagnostics(prev => ({
+        ...prev,
+        lastError: error.message || 'Unknown error',
+        lastRunTime: new Date().toISOString(),
+      }));
+      toast.error(error.message || 'Failed to generate GPT-5 translations');
     } finally {
       setGeneratingGpt52(false);
       cancelGpt52Ref.current = false;
@@ -665,6 +697,55 @@ const AdminTranslations = () => {
                     <p className="text-sm text-muted-foreground text-center">
                       {gpt5Stats.pending} GPT-5 translations remaining
                     </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* GPT-5 Diagnostics Panel */}
+            {selectedSceneId && gpt5Diagnostics.lastRunTime && (
+              <Card className="border-slate-300 dark:border-slate-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
+                    <AlertCircle className="w-4 h-4" />
+                    GPT-5 Diagnostics
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Last Run:</span>
+                      <p className="font-mono text-xs">{new Date(gpt5Diagnostics.lastRunTime).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Last Batch:</span>
+                      <p>
+                        <Badge variant="secondary" className="mr-1">{gpt5Diagnostics.lastBatchProcessed} processed</Badge>
+                        {gpt5Diagnostics.lastBatchErrors > 0 && (
+                          <Badge variant="destructive">{gpt5Diagnostics.lastBatchErrors} errors</Badge>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {gpt5Diagnostics.lastError && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription className="font-mono text-xs break-all">
+                        {gpt5Diagnostics.lastError}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {gpt5Diagnostics.lastResponse && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                        View Last Response JSON
+                      </summary>
+                      <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-h-40">
+                        {JSON.stringify(gpt5Diagnostics.lastResponse, null, 2)}
+                      </pre>
+                    </details>
                   )}
                 </CardContent>
               </Card>
