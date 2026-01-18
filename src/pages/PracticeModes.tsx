@@ -93,24 +93,24 @@ const PracticeModes = () => {
       </header>
 
       {/* Practice Mode Options */}
-      <main className="flex-1 px-6 py-4">
-        <div className="max-w-sm mx-auto space-y-3">
+      <main className="flex-1 px-6 py-8">
+        <div className="max-w-md mx-auto space-y-4">
           {availableModes.map((mode) => (
             <Button
               key={mode.id}
               variant="practice"
-              className="w-full"
+              className="w-full py-5"
               onClick={() => handleModeSelect(mode.path)}
             >
-              <div className="flex items-start gap-4 w-full">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+              <div className="flex items-center gap-5 w-full">
+                <div className="w-14 h-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
                   {mode.icon}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-foreground text-base mb-1">
+                <div className="flex-1 min-w-0 text-left">
+                  <h2 className="font-semibold text-foreground text-lg mb-1">
                     {mode.title}
                   </h2>
-                  <p className="text-sm text-muted-foreground leading-snug">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
                     {mode.description}
                   </p>
                 </div>
