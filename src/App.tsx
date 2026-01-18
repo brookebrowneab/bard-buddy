@@ -11,7 +11,7 @@ import PracticeModes from "./pages/PracticeModes";
 import CueSayIt from "./pages/practice/CueSayIt";
 import FirstLetter from "./pages/practice/FirstLetter";
 import Scramble from "./pages/practice/Scramble";
-// PlainEnglish route now uses ModernEnglishSceneViewer (canonical-locked)
+// PlainEnglish route uses ModernEnglishSceneViewer (canonical-locked, GPT-5.2 support)
 import UploadScene from "./pages/UploadScene";
 import ParseReview from "./pages/ParseReview";
 import SceneList from "./pages/SceneList";
