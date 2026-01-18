@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
 
 interface Scene {
   id: string;
@@ -85,8 +87,10 @@ const AdminTranslations = () => {
       }
 
       setScenes(data || []);
+      // Default to canonical scene if available, otherwise first scene
       if (data && data.length > 0) {
-        setSelectedSceneId(data[0].id);
+        const canonicalScene = data.find(s => s.id === CANONICAL_SCENE_ID);
+        setSelectedSceneId(canonicalScene?.id || data[0].id);
       }
       setLoading(false);
     };
@@ -318,11 +322,18 @@ const AdminTranslations = () => {
                   <SelectContent>
                     {scenes.map((scene) => (
                       <SelectItem key={scene.id} value={scene.id}>
-                        {scene.title}
+                        {getSceneLabel(scene.id, scene.title)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+
+                {selectedSceneId && !isCanonicalScene(selectedSceneId) && (
+                  <Alert variant="destructive" className="mt-3">
+                    <TriangleAlert className="h-4 w-4" />
+                    <AlertDescription>{DUPLICATE_SCENE_WARNING}</AlertDescription>
+                  </Alert>
+                )}
 
                 {sections.length > 0 && (
                   <Select 

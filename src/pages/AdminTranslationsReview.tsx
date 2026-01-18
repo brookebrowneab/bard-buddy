@@ -7,12 +7,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Loader2, ChevronLeft, Languages, CheckCircle, AlertCircle, Edit, 
-  RefreshCw, Save, Eye, XCircle, Plus, Play, Square
+  RefreshCw, Save, Eye, XCircle, Plus, Play, Square, TriangleAlert
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
 
 interface Scene {
   id: string;
@@ -118,8 +120,10 @@ const AdminTranslationsReview = () => {
         .order('created_at', { ascending: false });
 
       setScenes(data || []);
+      // Default to canonical scene if available, otherwise first scene
       if (data && data.length > 0) {
-        setSelectedSceneId(data[0].id);
+        const canonicalScene = data.find(s => s.id === CANONICAL_SCENE_ID);
+        setSelectedSceneId(canonicalScene?.id || data[0].id);
       }
       setLoading(false);
     };
@@ -461,6 +465,18 @@ const AdminTranslationsReview = () => {
         </div>
       </header>
 
+      {/* Warning for non-canonical scenes */}
+      {selectedSceneId && !isCanonicalScene(selectedSceneId) && (
+        <div className="border-b border-destructive/50 bg-destructive/10 p-3">
+          <div className="max-w-7xl mx-auto">
+            <Alert variant="destructive" className="py-2">
+              <TriangleAlert className="h-4 w-4" />
+              <AlertDescription>{DUPLICATE_SCENE_WARNING}</AlertDescription>
+            </Alert>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="border-b border-border bg-muted/30 p-4">
         <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -468,7 +484,7 @@ const AdminTranslationsReview = () => {
             <SelectTrigger><SelectValue placeholder="Scene" /></SelectTrigger>
             <SelectContent>
               {scenes.map(s => (
-                <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                <SelectItem key={s.id} value={s.id}>{getSceneLabel(s.id, s.title)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
