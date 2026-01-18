@@ -111,7 +111,9 @@ const AdminTranslationsReview = () => {
   const [regenerating, setRegenerating] = useState(false);
   
   const [generating, setGenerating] = useState(false);
+  const [generatingGpt52, setGeneratingGpt52] = useState(false);
   const cancelRef = useRef(false);
+  const cancelGpt52Ref = useRef(false);
   
   // Flag issue dialog
   const [showFlagDialog, setShowFlagDialog] = useState(false);
@@ -543,6 +545,61 @@ const AdminTranslationsReview = () => {
     }
   };
 
+  // GPT-5.2 bulk generation
+  const handleBulkGenerateGpt52 = async () => {
+    if (!selectedSceneId) return;
+
+    setGeneratingGpt52(true);
+    cancelGpt52Ref.current = false;
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please log in');
+        return;
+      }
+
+      let hasMore = true;
+      let totalProcessed = 0;
+
+      while (hasMore && !cancelGpt52Ref.current) {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-translations-gpt52`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              scene_id: selectedSceneId,
+              section_id: selectedSectionId,
+            }),
+          }
+        );
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        totalProcessed += result.processed || 0;
+        hasMore = result.has_more === true;
+        
+        toast.info(`GPT-5.2: Processed ${totalProcessed} (${result.remaining} remaining)`);
+      }
+
+      if (cancelGpt52Ref.current) {
+        toast.info(`Cancelled GPT-5.2 after ${totalProcessed} translations.`);
+      } else {
+        toast.success(`GPT-5.2 generated ${totalProcessed} translations.`);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to generate GPT-5.2 translations');
+    } finally {
+      setGeneratingGpt52(false);
+      cancelGpt52Ref.current = false;
+    }
+  };
+
   // Bulk actions
   const handleBulkApprove = async () => {
     const toApprove = lineBlocks.filter(lb => 
@@ -688,6 +745,17 @@ const AdminTranslationsReview = () => {
             <Button size="sm" onClick={handleBulkGenerate}>
               <Play className="w-4 h-4 mr-2" />
               Generate Missing
+            </Button>
+          )}
+          {generatingGpt52 ? (
+            <Button variant="destructive" size="sm" onClick={() => { cancelGpt52Ref.current = true; }}>
+              <Square className="w-4 h-4 mr-2" />
+              Cancel GPT-5.2
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={handleBulkGenerateGpt52} className="text-purple-600 border-purple-600 hover:bg-purple-50">
+              <Play className="w-4 h-4 mr-2" />
+              Generate GPT-5.2
             </Button>
           )}
         </div>

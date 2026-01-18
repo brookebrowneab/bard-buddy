@@ -34,13 +34,20 @@ interface Character {
   name: string;
 }
 
-const STYLE = "plain_english";
+// Available translation styles
+const TRANSLATION_STYLES = [
+  { value: "plain_english", label: "Modern English (GPT-4o-mini)" },
+  { value: "plain_english_gpt52_v1", label: "Modern English (GPT-5.2)" },
+] as const;
+
+const DEFAULT_STYLE = "plain_english";
 
 // localStorage keys for persisting toggles
 const STORAGE_KEYS = {
   VISIBLE_MODE: 'modernEnglish_visibleMode',
   SELECTED_SECTION: 'modernEnglish_selectedSection',
   SELECTED_CHARACTER: 'modernEnglish_selectedCharacter',
+  TRANSLATION_STYLE: 'modernEnglish_translationStyle',
 };
 
 type VisibleMode = 'none' | 'mine' | 'all';
@@ -56,6 +63,7 @@ const ModernEnglishSceneViewer = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<string>(DEFAULT_STYLE);
   const [lineBlocks, setLineBlocks] = useState<LineBlockWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
   const [visibleMode, setVisibleMode] = useState<VisibleMode>('none');
@@ -66,10 +74,12 @@ const ModernEnglishSceneViewer = () => {
     const savedMode = localStorage.getItem(STORAGE_KEYS.VISIBLE_MODE) as VisibleMode | null;
     const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
     const savedCharacter = localStorage.getItem(STORAGE_KEYS.SELECTED_CHARACTER);
+    const savedStyle = localStorage.getItem(STORAGE_KEYS.TRANSLATION_STYLE);
     
     if (savedMode) setVisibleMode(savedMode);
     if (savedSection) setSelectedSectionId(savedSection);
     if (savedCharacter) setSelectedCharacter(savedCharacter);
+    if (savedStyle) setSelectedStyle(savedStyle);
   }, []);
 
   // Set character from context
@@ -96,6 +106,11 @@ const ModernEnglishSceneViewer = () => {
       localStorage.setItem(STORAGE_KEYS.SELECTED_CHARACTER, selectedCharacter);
     }
   }, [selectedCharacter]);
+
+  // Persist style changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.TRANSLATION_STYLE, selectedStyle);
+  }, [selectedStyle]);
 
   // Fetch sections
   useEffect(() => {
@@ -157,13 +172,13 @@ const ModernEnglishSceneViewer = () => {
         return;
       }
 
-      // Fetch translations for these blocks
+      // Fetch translations for these blocks using selected style
       const blockIds = blocks.map(b => b.id);
       const { data: translations } = await supabase
         .from('lineblock_translations')
         .select('lineblock_id, translation_text, status, review_status')
         .in('lineblock_id', blockIds)
-        .eq('style', STYLE);
+        .eq('style', selectedStyle);
 
       const translationMap = new Map(
         (translations || []).map(t => [t.lineblock_id, t])
@@ -179,7 +194,7 @@ const ModernEnglishSceneViewer = () => {
     };
 
     fetchLines();
-  }, [sceneId, selectedSectionId]);
+  }, [sceneId, selectedSectionId, selectedStyle]);
 
   // Update visible translations when mode or data changes
   useEffect(() => {
@@ -277,19 +292,33 @@ const ModernEnglishSceneViewer = () => {
         )}
 
         {/* Character Picker */}
-        {characters.length > 0 && (
-          <Select value={selectedCharacter || "all"} onValueChange={v => setSelectedCharacter(v === "all" ? null : v)}>
+        <div className="flex flex-wrap gap-3">
+          {characters.length > 0 && (
+            <Select value={selectedCharacter || "all"} onValueChange={v => setSelectedCharacter(v === "all" ? null : v)}>
+              <SelectTrigger className="w-full max-w-xs">
+                <SelectValue placeholder="Select your character" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Characters</SelectItem>
+                {characters.map(c => (
+                  <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {/* Translation Style Picker */}
+          <Select value={selectedStyle} onValueChange={setSelectedStyle}>
             <SelectTrigger className="w-full max-w-xs">
-              <SelectValue placeholder="Select your character" />
+              <SelectValue placeholder="Translation style" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Characters</SelectItem>
-              {characters.map(c => (
-                <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+              {TRANSLATION_STYLES.map(style => (
+                <SelectItem key={style.value} value={style.value}>{style.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        )}
+        </div>
       </div>
 
       {/* Bulk Toggle Controls */}
