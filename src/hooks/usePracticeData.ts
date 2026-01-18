@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useScene } from '@/context/SceneContext';
@@ -17,10 +17,14 @@ export function usePracticeData() {
     selectedMode,
     loadFromLineBlocks,
     practiceLines,
+    setPracticeLines,
   } = useScene();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track what we loaded to avoid duplicate loads but allow reloads on changes
+  const loadedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -40,8 +44,11 @@ export function usePracticeData() {
         return;
       }
 
-      // If we already have practice lines for this role, we're good
-      if (practiceLines.length > 0) {
+      // Create a key to track what we've loaded
+      const loadKey = `${activeScriptId}-${selectedSection?.id || 'all'}-${selectedRole}`;
+      
+      // If we already loaded this exact combination, we're good
+      if (loadedRef.current === loadKey && practiceLines.length > 0) {
         setLoading(false);
         return;
       }
@@ -78,11 +85,12 @@ export function usePracticeData() {
 
       // Load lines for the selected role
       loadFromLineBlocks(blocks as LineBlock[], selectedRole);
+      loadedRef.current = loadKey;
       setLoading(false);
     };
 
     loadData();
-  }, [activeScriptId, selectedSection, selectedRole, selectedMode, loadFromLineBlocks, practiceLines.length, navigate]);
+  }, [activeScriptId, selectedSection, selectedRole, selectedMode, loadFromLineBlocks, practiceLines.length, setPracticeLines, navigate]);
 
   return {
     loading,

@@ -59,6 +59,9 @@ interface SceneContextType {
   sceneTitle: string;
   setSceneId: (id: string | null) => void;
   setSceneTitle: (title: string) => void;
+  
+  // Clear practice lines when changing context
+  clearPracticeLines: () => void;
 }
 
 const SceneContext = createContext<SceneContextType | undefined>(undefined);
@@ -143,6 +146,12 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
     })));
   };
 
+  // Clear practice lines when changing context
+  const clearPracticeLines = () => {
+    setPracticeLines([]);
+    setCurrentLineIndex(0);
+  };
+
   return (
     <SceneContext.Provider
       value={{
@@ -178,6 +187,7 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
         totalLines: filteredLines.length,
         loadFromLineBlocks,
         useSampleScene,
+        clearPracticeLines,
         
         // Legacy compatibility
         sceneId,
