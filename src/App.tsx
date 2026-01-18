@@ -11,6 +11,9 @@ import CueSayIt from "./pages/practice/CueSayIt";
 import FirstLetter from "./pages/practice/FirstLetter";
 import Scramble from "./pages/practice/Scramble";
 import PlainEnglish from "./pages/practice/PlainEnglish";
+import UploadScene from "./pages/UploadScene";
+import ParseReview from "./pages/ParseReview";
+import SceneList from "./pages/SceneList";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,7 +27,11 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/upload" element={<UploadScene />} />
+            <Route path="/scenes" element={<SceneList />} />
+            <Route path="/parse-review/:sceneId" element={<ParseReview />} />
             <Route path="/role-picker" element={<RolePicker />} />
+            <Route path="/role-picker/:sceneId" element={<RolePicker />} />
             <Route path="/practice-modes" element={<PracticeModes />} />
             <Route path="/practice/cue-say-it" element={<CueSayIt />} />
             <Route path="/practice/first-letter" element={<FirstLetter />} />

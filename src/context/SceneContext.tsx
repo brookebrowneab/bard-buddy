@@ -1,40 +1,74 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Scene, Line, sampleScene, getCharacterLines } from '@/data/sampleScene';
+import { sampleScene } from '@/data/sampleScene';
+import type { LineBlock } from '@/types/scene';
+
+// Unified line interface for practice modes
+export interface PracticeLine {
+  character: string;
+  cue_line: string;
+  shakespeare_line: string;
+  modern_hint: string;
+}
 
 interface SceneContextType {
-  scene: Scene;
+  // Scene info
+  sceneId: string | null;
+  sceneTitle: string;
+  setSceneId: (id: string | null) => void;
+  setSceneTitle: (title: string) => void;
+  
+  // Role selection
   selectedRole: string | null;
   setSelectedRole: (role: string | null) => void;
-  characterLines: Line[];
+  characters: string[];
+  setCharacters: (chars: string[]) => void;
+  
+  // Lines for practice
+  practiceLines: PracticeLine[];
+  setPracticeLines: (lines: PracticeLine[]) => void;
+  
+  // Navigation
   currentLineIndex: number;
   setCurrentLineIndex: (index: number) => void;
-  getCurrentLine: () => Line | null;
+  getCurrentLine: () => PracticeLine | null;
   nextLine: () => void;
   prevLine: () => void;
   resetProgress: () => void;
   hasNextLine: boolean;
   hasPrevLine: boolean;
   totalLines: number;
+  
+  // Helper to load from LineBlocks
+  loadFromLineBlocks: (blocks: LineBlock[], role: string) => void;
+  
+  // Use sample scene
+  useSampleScene: () => void;
 }
 
 const SceneContext = createContext<SceneContextType | undefined>(undefined);
 
 export const SceneProvider = ({ children }: { children: ReactNode }) => {
-  const [scene] = useState<Scene>(sampleScene);
+  const [sceneId, setSceneId] = useState<string | null>(null);
+  const [sceneTitle, setSceneTitle] = useState<string>(sampleScene.title);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [characters, setCharacters] = useState<string[]>(sampleScene.characters);
+  const [practiceLines, setPracticeLines] = useState<PracticeLine[]>([]);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
 
-  const characterLines = selectedRole ? getCharacterLines(scene, selectedRole) : [];
+  // Filter lines for selected role
+  const filteredLines = selectedRole 
+    ? practiceLines.filter(line => line.character.toLowerCase() === selectedRole.toLowerCase())
+    : [];
 
-  const getCurrentLine = (): Line | null => {
-    if (characterLines.length === 0 || currentLineIndex >= characterLines.length) {
+  const getCurrentLine = (): PracticeLine | null => {
+    if (filteredLines.length === 0 || currentLineIndex >= filteredLines.length) {
       return null;
     }
-    return characterLines[currentLineIndex];
+    return filteredLines[currentLineIndex];
   };
 
   const nextLine = () => {
-    if (currentLineIndex < characterLines.length - 1) {
+    if (currentLineIndex < filteredLines.length - 1) {
       setCurrentLineIndex(prev => prev + 1);
     }
   };
@@ -54,22 +88,61 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
     setCurrentLineIndex(0);
   };
 
+  // Load lines from database LineBlocks
+  const loadFromLineBlocks = (blocks: LineBlock[], role: string) => {
+    const roleBlocks = blocks.filter(b => 
+      b.speaker_name.toLowerCase() === role.toLowerCase()
+    );
+    
+    const lines: PracticeLine[] = roleBlocks.map(block => ({
+      character: block.speaker_name,
+      cue_line: block.preceding_cue_raw || '(Scene opens)',
+      shakespeare_line: block.text_raw,
+      modern_hint: block.modern_hint || '',
+    }));
+    
+    setPracticeLines(lines);
+    setSelectedRole(role);
+    setCurrentLineIndex(0);
+  };
+
+  // Use built-in sample scene
+  const useSampleScene = () => {
+    setSceneId(null);
+    setSceneTitle(sampleScene.title);
+    setCharacters(sampleScene.characters);
+    setPracticeLines(sampleScene.lines.map(l => ({
+      character: l.character,
+      cue_line: l.cue_line,
+      shakespeare_line: l.shakespeare_line,
+      modern_hint: l.modern_hint,
+    })));
+  };
+
   return (
     <SceneContext.Provider
       value={{
-        scene,
+        sceneId,
+        sceneTitle,
+        setSceneId,
+        setSceneTitle,
         selectedRole,
         setSelectedRole: handleSetSelectedRole,
-        characterLines,
+        characters,
+        setCharacters,
+        practiceLines,
+        setPracticeLines,
         currentLineIndex,
         setCurrentLineIndex,
         getCurrentLine,
         nextLine,
         prevLine,
         resetProgress,
-        hasNextLine: currentLineIndex < characterLines.length - 1,
+        hasNextLine: currentLineIndex < filteredLines.length - 1,
         hasPrevLine: currentLineIndex > 0,
-        totalLines: characterLines.length,
+        totalLines: filteredLines.length,
+        loadFromLineBlocks,
+        useSampleScene,
       }}
     >
       {children}

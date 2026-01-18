@@ -1,10 +1,16 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
-import { Sparkles, Drama } from "lucide-react";
+import { Sparkles, Drama, Upload, FolderOpen } from "lucide-react";
 
 const Index = () => {
-  const { scene, selectedRole } = useScene();
+  const { sceneTitle, selectedRole, useSampleScene } = useScene();
+  const navigate = useNavigate();
+
+  const handleUseSample = () => {
+    useSampleScene();
+    navigate("/role-picker");
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -15,7 +21,7 @@ const Index = () => {
           <span className="font-serif text-sm uppercase tracking-wide">Shakespeare Lines</span>
         </div>
         <h1 className="font-serif text-2xl font-bold text-foreground">
-          {scene.title}
+          Memorize Your Lines
         </h1>
       </header>
 
@@ -27,41 +33,54 @@ const Index = () => {
             <div className="text-center mb-6 p-4 bg-card rounded-lg border border-border">
               <p className="text-sm text-muted-foreground mb-1">Your Role</p>
               <p className="font-serif text-xl font-semibold text-foreground">{selectedRole}</p>
+              <p className="text-xs text-muted-foreground mt-1">{sceneTitle}</p>
             </div>
           )}
 
-          {/* Main Actions */}
-          <Link to="/role-picker" className="block w-full">
+          {/* Upload PDF */}
+          <Link to="/upload" className="block w-full">
             <Button variant="stage" size="xl" className="w-full">
-              <Drama className="w-5 h-5 mr-2" />
-              {selectedRole ? "Change My Role" : "Choose My Role"}
+              <Upload className="w-5 h-5 mr-2" />
+              Upload Scene PDF
             </Button>
           </Link>
 
-          <Link 
-            to={selectedRole ? "/practice-modes" : "/role-picker"} 
-            className="block w-full"
+          {/* My Scenes */}
+          <Link to="/scenes" className="block w-full">
+            <Button variant="outline" size="xl" className="w-full">
+              <FolderOpen className="w-5 h-5 mr-2" />
+              My Uploaded Scenes
+            </Button>
+          </Link>
+
+          {/* Sample Scene */}
+          <Button 
+            variant="ghost" 
+            size="lg" 
+            className="w-full"
+            onClick={handleUseSample}
           >
-            <Button 
-              variant="default" 
-              size="xl" 
-              className="w-full"
-              disabled={!selectedRole}
-            >
-              <Sparkles className="w-5 h-5 mr-2" />
-              Practice
-            </Button>
-          </Link>
+            <Drama className="w-5 h-5 mr-2" />
+            Try Sample Scene
+          </Button>
 
-          {!selectedRole && (
-            <p className="text-center text-sm text-muted-foreground mt-4">
-              Choose your role to start practicing
-            </p>
+          {/* Continue Practicing */}
+          {selectedRole && (
+            <Link to="/practice-modes" className="block w-full">
+              <Button 
+                variant="default" 
+                size="xl" 
+                className="w-full"
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                Continue Practice
+              </Button>
+            </Link>
           )}
         </div>
       </main>
 
-      {/* Encouraging Footer */}
+      {/* Footer */}
       <footer className="px-6 pb-8 text-center">
         <p className="font-serif text-sm text-muted-foreground italic">
           "All the world's a stage..."
