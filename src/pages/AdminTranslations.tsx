@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -40,6 +40,7 @@ const AdminTranslations = () => {
   const [generating, setGenerating] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const cancelRef = useRef(false);
 
   // Check admin status
   useEffect(() => {
@@ -200,6 +201,7 @@ const AdminTranslations = () => {
     if (!selectedSceneId) return;
 
     setGenerating(true);
+    cancelRef.current = false;
     
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -212,8 +214,8 @@ const AdminTranslations = () => {
       let totalProcessed = 0;
       let totalErrors = 0;
 
-      // Keep calling the function until all translations are done
-      while (hasMore) {
+      // Keep calling the function until all translations are done or cancelled
+      while (hasMore && !cancelRef.current) {
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-translations-bulk`,
           {
@@ -244,15 +246,24 @@ const AdminTranslations = () => {
         setRefreshKey(prev => prev + 1);
       }
 
-      toast.success(
-        `Generated ${totalProcessed} translations${totalErrors > 0 ? ` (${totalErrors} errors)` : ''}.`
-      );
+      if (cancelRef.current) {
+        toast.info(`Cancelled after generating ${totalProcessed} translations.`);
+      } else {
+        toast.success(
+          `Generated ${totalProcessed} translations${totalErrors > 0 ? ` (${totalErrors} errors)` : ''}.`
+        );
+      }
     } catch (error: any) {
       console.error('Error generating translations:', error);
       toast.error(error.message || 'Failed to generate translations');
     } finally {
       setGenerating(false);
+      cancelRef.current = false;
     }
+  };
+
+  const handleCancelGeneration = () => {
+    cancelRef.current = true;
   };
 
   const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
@@ -380,23 +391,25 @@ const AdminTranslations = () => {
                     </p>
                   </div>
 
-                  <Button
-                    onClick={handleGenerateTranslations}
-                    disabled={generating || stats.total === 0}
-                    className="w-full"
-                  >
-                    {generating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-4 h-4 mr-2" />
-                        Generate Missing Translations
-                      </>
-                    )}
-                  </Button>
+                  {generating ? (
+                    <Button
+                      onClick={handleCancelGeneration}
+                      variant="destructive"
+                      className="w-full"
+                    >
+                      <Square className="w-4 h-4 mr-2" />
+                      Cancel Generation
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleGenerateTranslations}
+                      disabled={stats.total === 0}
+                      className="w-full"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Generate Missing Translations
+                    </Button>
+                  )}
 
                   {stats.total - stats.completed > 0 && (
                     <p className="text-sm text-muted-foreground text-center">
