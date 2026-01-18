@@ -26,11 +26,52 @@ interface ParseResult {
 
 // Known character names from play scripts (common patterns)
 const KNOWN_SPEAKER_PATTERNS = [
-  'Messenger', 'First', 'Second', 'Third', 'Servant', 'Attendant', 'Officer',
-  'Guard', 'Watchman', 'Soldier', 'Gentleman', 'Lady', 'Lord', 'Duke', 'King',
-  'Queen', 'Prince', 'Princess', 'Nurse', 'Friar', 'Boy', 'Girl', 'Man', 'Woman',
-  'Chorus', 'Prologue', 'Epilogue', 'Captain', 'Page', 'Clown'
+  'Messenger',
+  'Servant',
+  'Attendant',
+  'Officer',
+  'Guard',
+  'Watchman',
+  'Soldier',
+  'Gentleman',
+  'Lady',
+  'Lord',
+  'Duke',
+  'King',
+  'Queen',
+  'Prince',
+  'Princess',
+  'Nurse',
+  'Friar',
+  'Boy',
+  'Girl',
+  'Man',
+  'Woman',
+  'Chorus',
+  'Prologue',
+  'Epilogue',
+  'Captain',
+  'Page',
+  'Clown',
+  'First',
+  'Second',
+  'Third'
 ];
+
+function isKnownRoleSpeaker(candidate: string): boolean {
+  // Exact single-word roles like "Messenger"
+  if (KNOWN_SPEAKER_PATTERNS.includes(candidate)) return true;
+
+  // Ordinal patterns like "First Watchman" / "Second Servant"
+  const ordMatch = candidate.match(/^(First|Second|Third)\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?$/);
+  if (ordMatch) return true;
+
+  // Roles with suffix numbers/roman numerals like "Servant 1" / "Servant II"
+  const roleSuffixMatch = candidate.match(/^(Servant|Attendant|Officer|Guard|Watchman|Soldier)\s+(\d+|[IVX]+)$/);
+  if (roleSuffixMatch) return true;
+
+  return false;
+}
 
 // Helper: Check if a line is a speaker label
 function isSpeakerLabel(line: string): boolean {
@@ -54,22 +95,15 @@ function isSpeakerLabel(line: string): boolean {
     return false;
   }
 
-  // Check if it starts with a known speaker pattern (handles title-case like "Messenger")
-  for (const pattern of KNOWN_SPEAKER_PATTERNS) {
-    if (candidate === pattern || candidate.startsWith(pattern + ' ')) {
-      return true;
-    }
-  }
-
-  // Check if mostly uppercase letters (allow apostrophes, hyphens, spaces)
+  // Primary signal: uppercase labels (typical scripts)
   const cleanedLine = candidate.replace(/[\s'-]/g, '');
   const isUppercase =
     cleanedLine === cleanedLine.toUpperCase() && /^[A-Z]+$/.test(cleanedLine);
+  if (isUppercase) return true;
 
-  // Also accept single title-case words that look like names (1-2 words, capitalized)
-  const isTitleCaseName = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)?$/.test(candidate);
-
-  return isUppercase || isTitleCaseName;
+  // Secondary signal: a small allowlist for title-case role labels like "Messenger"
+  // (Avoid treating normal dialogue like "Good Signior..." as a speaker.)
+  return isKnownRoleSpeaker(candidate);
 }
 
 // Helper: detect "INLINE" speaker starts like "LEONATO I learn..." or "Messenger He is..."
@@ -77,24 +111,21 @@ function parseInlineSpeakerStart(line: string): { speakerLabel: string; rest: st
   const trimmed = line.trim();
   if (!trimmed) return null;
 
-  // Match uppercase speakers: "DON PEDRO ..." or "FIRST WATCHMAN ..."
+  // Uppercase speakers: "DON PEDRO ..." or "LEONATO: ..."
   const upperMatch = trimmed.match(/^([A-Z][A-Z'\- ]{1,40}?)[.:]?\s+(.+)$/);
   if (upperMatch) {
     const speakerLabel = upperMatch[1].trim().replace(/[\s]+/g, ' ');
     const rest = (upperMatch[2] ?? '').trim();
-    if (isSpeakerLabel(speakerLabel) && rest) {
-      return { speakerLabel, rest };
-    }
+    if (isSpeakerLabel(speakerLabel) && rest) return { speakerLabel, rest };
   }
 
-  // Match title-case speakers: "Messenger He is..." or known patterns
-  const titleMatch = trimmed.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)[.:]?\s+(.+)$/);
+  // Title-case role speakers ONLY (avoid false positives like "Good Signior ...")
+  // Examples: "Messenger He is...", "First Watchman Who goes there?"
+  const titleMatch = trimmed.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})[.:]?\s+(.+)$/);
   if (titleMatch) {
     const speakerLabel = titleMatch[1].trim();
     const rest = (titleMatch[2] ?? '').trim();
-    if (isSpeakerLabel(speakerLabel) && rest) {
-      return { speakerLabel, rest };
-    }
+    if (isSpeakerLabel(speakerLabel) && rest) return { speakerLabel, rest };
   }
 
   return null;
