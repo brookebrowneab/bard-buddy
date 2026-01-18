@@ -184,13 +184,15 @@ serve(async (req) => {
         });
 
         if (!aiResponse.ok) {
+          const errorBody = await aiResponse.text();
+          console.error(`AI API error ${aiResponse.status}:`, errorBody);
           if (aiResponse.status === 429) {
             throw new Error('Rate limit exceeded - please try again later');
           }
           if (aiResponse.status === 402) {
             throw new Error('Payment required - please add credits to your workspace');
           }
-          throw new Error(`AI API error: ${aiResponse.status}`);
+          throw new Error(`AI API error: ${aiResponse.status} - ${errorBody.slice(0, 200)}`);
         }
 
         const aiData = await aiResponse.json();
