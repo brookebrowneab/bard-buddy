@@ -21,6 +21,7 @@ const ParseReview = () => {
     updateLineBlock,
     deleteLineBlock,
     convertToStageDirection,
+    refreshCharacters,
     saveLineBlocks,
     loading 
   } = useSceneData();
@@ -88,9 +89,12 @@ const ParseReview = () => {
         });
       }
       
+      // Auto-refresh characters to remove orphaned entries
+      await refreshCharacters(sceneId);
+      
       toast({
         title: 'Changes saved',
-        description: 'All line blocks have been updated',
+        description: 'All line blocks and characters have been updated',
       });
     } catch (error) {
       toast({
