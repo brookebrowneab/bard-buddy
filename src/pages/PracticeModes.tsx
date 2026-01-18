@@ -99,11 +99,11 @@ const PracticeModes = () => {
             <Button
               key={mode.id}
               variant="practice"
-              className="w-full py-5"
+              className="w-full py-8"
               onClick={() => handleModeSelect(mode.path)}
             >
               <div className="flex items-center gap-5 w-full">
-                <div className="w-14 h-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                <div className="w-16 h-16 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
                   {mode.icon}
                 </div>
                 <div className="flex-1 min-w-0 text-left">
