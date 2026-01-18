@@ -51,7 +51,7 @@ const PracticeModes = () => {
   const handleModeSelect = (mode: PracticeModeOption) => {
     setSelectedMode(mode.path);
     resetProgress();
-    navigate("/scenes");
+    navigate("/role-picker"); // Go to character selection first
   };
 
   return (

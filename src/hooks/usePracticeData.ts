@@ -30,13 +30,13 @@ export function usePracticeData() {
         return;
       }
 
-      if (!selectedSection || !activeScriptId) {
-        navigate('/scenes');
+      if (!activeScriptId) {
+        navigate('/role-picker');
         return;
       }
 
       if (!selectedRole) {
-        navigate(`/role-picker/${selectedSection.id}`);
+        navigate('/role-picker');
         return;
       }
 
@@ -46,16 +46,23 @@ export function usePracticeData() {
         return;
       }
 
-      // Load line blocks for this section
+      // Load line blocks
       setLoading(true);
       setError(null);
 
-      const { data: blocks, error: fetchError } = await supabase
+      let query = supabase
         .from('line_blocks')
         .select('*')
         .eq('scene_id', activeScriptId)
-        .eq('section_id', selectedSection.id)
         .order('order_index', { ascending: true });
+
+      // If a specific section is selected, filter by it
+      // If selectedSection is null, we get all sections (Practice All)
+      if (selectedSection) {
+        query = query.eq('section_id', selectedSection.id);
+      }
+
+      const { data: blocks, error: fetchError } = await query;
 
       if (fetchError) {
         setError(fetchError.message);
@@ -64,7 +71,7 @@ export function usePracticeData() {
       }
 
       if (!blocks || blocks.length === 0) {
-        setError('No lines found for this section');
+        setError('No lines found');
         setLoading(false);
         return;
       }
