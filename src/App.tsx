@@ -15,6 +15,8 @@ import PlainEnglish from "./pages/practice/PlainEnglish";
 import UploadScene from "./pages/UploadScene";
 import ParseReview from "./pages/ParseReview";
 import SceneList from "./pages/SceneList";
+import ModernEnglishGame from "./pages/ModernEnglishGame";
+import AdminTranslations from "./pages/AdminTranslations";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +41,8 @@ const App = () => (
             <Route path="/practice/first-letter" element={<FirstLetter />} />
             <Route path="/practice/scramble" element={<Scramble />} />
             <Route path="/practice/plain-english" element={<PlainEnglish />} />
+            <Route path="/modern-english" element={<ModernEnglishGame />} />
+            <Route path="/admin/translations" element={<AdminTranslations />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
