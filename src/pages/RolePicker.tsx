@@ -9,32 +9,30 @@ const RolePicker = () => {
   const { sceneId: paramSceneId } = useParams<{ sceneId?: string }>();
   const { 
     selectedRole, setSelectedRole, characters, setCharacters, 
-    setSceneId, setSceneTitle, loadFromLineBlocks, sceneId 
+    setSceneId, setSceneTitle, sceneId 
   } = useScene();
-  const { fetchScene, fetchLineBlocks, fetchCharacters, lineBlocks, loading } = useSceneData();
+  const { fetchScene, fetchCharacters, loading } = useSceneData();
   const navigate = useNavigate();
 
-  // Load scene data if coming from a specific scene
+  const activeSceneId = paramSceneId || sceneId;
+
+  // Load scene data if we have a scene ID
   useEffect(() => {
-    if (paramSceneId) {
-      setSceneId(paramSceneId);
-      fetchScene(paramSceneId).then(scene => {
+    if (activeSceneId) {
+      setSceneId(activeSceneId);
+      fetchScene(activeSceneId).then(scene => {
         if (scene) setSceneTitle(scene.title);
       });
-      fetchCharacters(paramSceneId).then(chars => {
+      fetchCharacters(activeSceneId).then(chars => {
         if (chars) setCharacters(chars.map(c => c.name));
       });
-      fetchLineBlocks(paramSceneId);
     }
-  }, [paramSceneId, fetchScene, fetchCharacters, fetchLineBlocks, setSceneId, setSceneTitle, setCharacters]);
+  }, [activeSceneId, fetchScene, fetchCharacters, setSceneId, setSceneTitle, setCharacters]);
 
   const handleRoleSelect = (character: string) => {
-    if (paramSceneId && lineBlocks.length > 0) {
-      loadFromLineBlocks(lineBlocks, character);
-    } else {
-      setSelectedRole(character);
-    }
-    navigate("/practice-modes");
+    setSelectedRole(character);
+    // Navigate to section picker to choose which scene to practice
+    navigate('/section-picker');
   };
 
   if (loading && characters.length === 0) {
@@ -52,7 +50,7 @@ const RolePicker = () => {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => navigate(paramSceneId ? "/scenes" : "/")}
+          onClick={() => navigate("/")}
           className="mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SceneProvider } from "@/context/SceneContext";
 import Index from "./pages/Index";
 import RolePicker from "./pages/RolePicker";
+import SectionPicker from "./pages/SectionPicker";
 import PracticeModes from "./pages/PracticeModes";
 import CueSayIt from "./pages/practice/CueSayIt";
 import FirstLetter from "./pages/practice/FirstLetter";
@@ -32,6 +33,8 @@ const App = () => (
             <Route path="/parse-review/:sceneId" element={<ParseReview />} />
             <Route path="/role-picker" element={<RolePicker />} />
             <Route path="/role-picker/:sceneId" element={<RolePicker />} />
+            <Route path="/section-picker" element={<SectionPicker />} />
+            <Route path="/section-picker/:sceneId" element={<SectionPicker />} />
             <Route path="/practice-modes" element={<PracticeModes />} />
             <Route path="/practice/cue-say-it" element={<CueSayIt />} />
             <Route path="/practice/first-letter" element={<FirstLetter />} />

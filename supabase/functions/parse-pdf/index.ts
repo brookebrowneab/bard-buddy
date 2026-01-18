@@ -10,6 +10,7 @@ interface LineBlock {
   speaker_name: string;
   text_raw: string;
   preceding_cue_raw: string | null;
+  section_index?: number; // Which section (act/scene) this line belongs to
 }
 
 interface StageDirection {
@@ -17,11 +18,19 @@ interface StageDirection {
   text_raw: string;
 }
 
+interface ParsedSection {
+  title: string;
+  act_number: number | null;
+  scene_number: number | null;
+  order_index: number;
+}
+
 interface ParseResult {
   normalized_text: string;
   line_blocks: LineBlock[];
   stage_directions: StageDirection[];
   characters: string[];
+  sections: ParsedSection[];
 }
 
 // Known character names from play scripts (common patterns)
@@ -185,6 +194,65 @@ function isActOrSceneHeading(line: string): boolean {
   return trimmed.startsWith('ACT') || trimmed.startsWith('SCENE') || trimmed.startsWith('TITLE');
 }
 
+// Helper: Parse an act/scene heading into structured data
+function parseActSceneHeading(line: string): ParsedSection | null {
+  const trimmed = line.trim();
+  const upper = trimmed.toUpperCase();
+  
+  // Pattern: "ACT 1" or "ACT I" or "ACT ONE"
+  const actMatch = upper.match(/^ACT\s+(\d+|[IVXLC]+|ONE|TWO|THREE|FOUR|FIVE)/i);
+  // Pattern: "SCENE 1" or "SCENE I" or "Scene 1"
+  const sceneMatch = upper.match(/^SCENE\s+(\d+|[IVXLC]+|ONE|TWO|THREE|FOUR|FIVE)/i);
+  // Pattern: "ACT 1, SCENE 2" or "Act I Scene II"
+  const combinedMatch = upper.match(/^ACT\s+(\d+|[IVXLC]+)\s*[,:]?\s*SCENE\s+(\d+|[IVXLC]+)/i);
+  
+  const parseNumber = (str: string): number => {
+    // Arabic numerals
+    if (/^\d+$/.test(str)) return parseInt(str, 10);
+    // Roman numerals
+    const roman: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100 };
+    let value = 0;
+    for (let i = 0; i < str.length; i++) {
+      const curr = roman[str[i]] || 0;
+      const next = roman[str[i + 1]] || 0;
+      value += curr < next ? -curr : curr;
+    }
+    if (value > 0) return value;
+    // Word form
+    const words: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+    return words[str.toUpperCase()] || 0;
+  };
+  
+  if (combinedMatch) {
+    return {
+      title: trimmed,
+      act_number: parseNumber(combinedMatch[1]),
+      scene_number: parseNumber(combinedMatch[2]),
+      order_index: 0
+    };
+  }
+  
+  if (actMatch) {
+    return {
+      title: trimmed,
+      act_number: parseNumber(actMatch[1]),
+      scene_number: null,
+      order_index: 0
+    };
+  }
+  
+  if (sceneMatch) {
+    return {
+      title: trimmed,
+      act_number: null,
+      scene_number: parseNumber(sceneMatch[1]),
+      order_index: 0
+    };
+  }
+  
+  return null;
+}
+
 // Helper: Check if a line is just a page number
 function isPageNumber(line: string): boolean {
   return /^\d+$/.test(line.trim());
@@ -286,18 +354,26 @@ function normalizeText(rawText: string): string {
   return mergedLines.join('\n');
 }
 
-// STEP 2 & 3: Parse into blocks
-function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], stageDirections: StageDirection[], characters: Set<string> } {
+// STEP 2 & 3: Parse into blocks with section tracking
+function parseIntoBlocks(normalizedText: string): { 
+  lineBlocks: LineBlock[], 
+  stageDirections: StageDirection[], 
+  characters: Set<string>,
+  sections: ParsedSection[]
+} {
   console.log('Step 2 & 3: Parsing into blocks...');
   
   const lines = normalizedText.split('\n');
   const lineBlocks: LineBlock[] = [];
   const stageDirections: StageDirection[] = [];
   const characters = new Set<string>();
+  const sections: ParsedSection[] = [];
   
   let orderIndex = 0;
   let currentSpeaker: string | null = null;
   let currentDialogue: string[] = [];
+  let currentSectionIndex = -1; // -1 means no section yet
+  let currentActNumber: number | null = null;
 
   const normalizeSpeakerName = (label: string) =>
     label
@@ -317,7 +393,8 @@ function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], sta
           order_index: orderIndex,
           speaker_name: currentSpeaker,
           text_raw: textRaw,
-          preceding_cue_raw: null // Will be computed in step 4
+          preceding_cue_raw: null, // Will be computed in step 4
+          section_index: currentSectionIndex >= 0 ? currentSectionIndex : undefined
         });
         characters.add(currentSpeaker);
         orderIndex++;
@@ -331,16 +408,36 @@ function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], sta
     
     if (!trimmed) continue;
     
-    // Skip act/scene headings
+    // Handle act/scene headings - create a new section
     if (isActOrSceneHeading(trimmed)) {
       flushCurrentBlock();
       currentSpeaker = null;
+      
+      const sectionData = parseActSceneHeading(trimmed);
+      if (sectionData) {
+        // If this is just an ACT heading, remember the act number for subsequent scenes
+        if (sectionData.act_number !== null && sectionData.scene_number === null) {
+          currentActNumber = sectionData.act_number;
+        }
+        
+        // If this is a SCENE heading without an act, inherit the current act
+        if (sectionData.act_number === null && sectionData.scene_number !== null && currentActNumber !== null) {
+          sectionData.act_number = currentActNumber;
+          sectionData.title = `Act ${currentActNumber}, Scene ${sectionData.scene_number}`;
+        }
+        
+        // Only create sections for scenes (with scene_number)
+        if (sectionData.scene_number !== null) {
+          sectionData.order_index = sections.length;
+          sections.push(sectionData);
+          currentSectionIndex = sections.length - 1;
+        }
+      }
       continue;
     }
     
     // Handle stage directions
     if (isStageDirection(trimmed)) {
-      // Don't flush current block - just record the stage direction
       stageDirections.push({
         order_index: orderIndex,
         text_raw: trimmed
@@ -374,7 +471,21 @@ function parseIntoBlocks(normalizedText: string): { lineBlocks: LineBlock[], sta
   // Flush any remaining block
   flushCurrentBlock();
   
-  return { lineBlocks, stageDirections, characters };
+  // If no sections were found, create a default one
+  if (sections.length === 0) {
+    sections.push({
+      title: 'Full Script',
+      act_number: 1,
+      scene_number: 1,
+      order_index: 0
+    });
+    // Assign all lines to this section
+    for (const block of lineBlocks) {
+      block.section_index = 0;
+    }
+  }
+  
+  return { lineBlocks, stageDirections, characters, sections };
 }
 
 // STEP 4: Compute cues
@@ -408,11 +519,12 @@ function parseSceneText(pdfTextRaw: string): ParseResult {
   const normalizedText = normalizeText(pdfTextRaw);
   console.log('Normalized text length:', normalizedText.length);
   
-  // Steps 2 & 3: Parse into blocks
-  const { lineBlocks, stageDirections, characters } = parseIntoBlocks(normalizedText);
+  // Steps 2 & 3: Parse into blocks with sections
+  const { lineBlocks, stageDirections, characters, sections } = parseIntoBlocks(normalizedText);
   console.log('Found', lineBlocks.length, 'line blocks');
   console.log('Found', stageDirections.length, 'stage directions');
   console.log('Found', characters.size, 'characters');
+  console.log('Found', sections.length, 'sections');
   
   // Step 4: Compute cues
   const blocksWithCues = computeCues(lineBlocks);
@@ -421,7 +533,8 @@ function parseSceneText(pdfTextRaw: string): ParseResult {
     normalized_text: normalizedText,
     line_blocks: blocksWithCues,
     stage_directions: stageDirections,
-    characters: Array.from(characters)
+    characters: Array.from(characters),
+    sections
   };
 }
 

@@ -7,6 +7,16 @@ export interface Scene {
   created_at: string;
 }
 
+export interface ScriptSection {
+  id: string;
+  scene_id: string;
+  title: string;
+  act_number: number | null;
+  scene_number: number | null;
+  order_index: number;
+  created_at: string;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -17,6 +27,7 @@ export interface Character {
 export interface LineBlock {
   id: string;
   scene_id: string;
+  section_id: string | null;
   order_index: number;
   speaker_name: string;
   text_raw: string;
@@ -49,6 +60,7 @@ export interface ParsedLineBlock {
   speaker_name: string;
   text_raw: string;
   preceding_cue_raw: string | null;
+  section_index?: number; // Which section this line belongs to
 }
 
 export interface ParsedStageDirection {
@@ -56,9 +68,17 @@ export interface ParsedStageDirection {
   text_raw: string;
 }
 
+export interface ParsedSection {
+  title: string;
+  act_number: number | null;
+  scene_number: number | null;
+  order_index: number;
+}
+
 export interface ParseResult {
   normalized_text: string;
   line_blocks: ParsedLineBlock[];
   stage_directions: ParsedStageDirection[];
   characters: string[];
+  sections: ParsedSection[];
 }

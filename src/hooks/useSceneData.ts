@@ -1,12 +1,13 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import type { Scene, LineBlock, Character } from '@/types/scene';
+import type { Scene, LineBlock, Character, ScriptSection, ParsedSection } from '@/types/scene';
 
 export function useSceneData() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [currentScene, setCurrentScene] = useState<Scene | null>(null);
   const [lineBlocks, setLineBlocks] = useState<LineBlock[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [sections, setSections] = useState<ScriptSection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,15 +50,41 @@ export function useSceneData() {
     return data;
   }, []);
 
-  const fetchLineBlocks = useCallback(async (sceneId: string) => {
+  const fetchSections = useCallback(async (sceneId: string) => {
     setLoading(true);
     setError(null);
     
     const { data, error: fetchError } = await supabase
+      .from('script_sections')
+      .select('*')
+      .eq('scene_id', sceneId)
+      .order('order_index', { ascending: true });
+    
+    if (fetchError) {
+      setError(fetchError.message);
+    } else {
+      setSections(data || []);
+    }
+    
+    setLoading(false);
+    return data;
+  }, []);
+
+  const fetchLineBlocks = useCallback(async (sceneId: string, sectionId?: string) => {
+    setLoading(true);
+    setError(null);
+    
+    let query = supabase
       .from('line_blocks')
       .select('*')
       .eq('scene_id', sceneId)
       .order('order_index', { ascending: true });
+    
+    if (sectionId) {
+      query = query.eq('section_id', sectionId);
+    }
+    
+    const { data, error: fetchError } = await query;
     
     if (fetchError) {
       setError(fetchError.message);
@@ -87,6 +114,47 @@ export function useSceneData() {
     
     setLoading(false);
     return data;
+  }, []);
+
+  // Get characters that appear in a specific section
+  const getCharactersInSection = useCallback(async (sceneId: string, sectionId: string) => {
+    const { data, error: fetchError } = await supabase
+      .from('line_blocks')
+      .select('speaker_name')
+      .eq('scene_id', sceneId)
+      .eq('section_id', sectionId);
+    
+    if (fetchError || !data) return [];
+    
+    // Get unique speaker names
+    const uniqueNames = [...new Set(data.map(d => d.speaker_name))];
+    return uniqueNames;
+  }, []);
+
+  // Get sections that a specific character appears in
+  const getSectionsForCharacter = useCallback(async (sceneId: string, characterName: string) => {
+    // First get all section IDs where this character speaks
+    const { data: lineData, error: lineError } = await supabase
+      .from('line_blocks')
+      .select('section_id')
+      .eq('scene_id', sceneId)
+      .ilike('speaker_name', characterName);
+    
+    if (lineError || !lineData) return [];
+    
+    // Get unique section IDs
+    const sectionIds = [...new Set(lineData.map(d => d.section_id).filter(Boolean))] as string[];
+    
+    if (sectionIds.length === 0) return [];
+    
+    // Fetch the actual sections
+    const { data: sectionsData } = await supabase
+      .from('script_sections')
+      .select('*')
+      .in('id', sectionIds)
+      .order('order_index', { ascending: true });
+    
+    return sectionsData || [];
   }, []);
 
   const createScene = useCallback(async (title: string, pdfTextRaw: string, sourcePdf?: string) => {
@@ -134,9 +202,43 @@ export function useSceneData() {
     return data;
   }, []);
 
+  const saveSections = useCallback(async (
+    sceneId: string,
+    parsedSections: ParsedSection[]
+  ) => {
+    // Delete existing sections for this scene
+    await supabase
+      .from('script_sections')
+      .delete()
+      .eq('scene_id', sceneId);
+    
+    if (parsedSections.length === 0) return [];
+    
+    // Insert new sections
+    const { data, error: insertError } = await supabase
+      .from('script_sections')
+      .insert(parsedSections.map(section => ({
+        scene_id: sceneId,
+        title: section.title,
+        act_number: section.act_number,
+        scene_number: section.scene_number,
+        order_index: section.order_index
+      })))
+      .select();
+    
+    if (insertError) {
+      setError(insertError.message);
+      return [];
+    }
+    
+    setSections(data || []);
+    return data || [];
+  }, []);
+
   const saveLineBlocks = useCallback(async (
     sceneId: string,
-    blocks: Array<{ order_index: number; speaker_name: string; text_raw: string; preceding_cue_raw: string | null }>
+    blocks: Array<{ order_index: number; speaker_name: string; text_raw: string; preceding_cue_raw: string | null; section_index?: number }>,
+    sectionIdMap?: Record<number, string> // Maps section_index to section_id
   ) => {
     setLoading(true);
     setError(null);
@@ -152,7 +254,13 @@ export function useSceneData() {
       .from('line_blocks')
       .insert(blocks.map(block => ({
         scene_id: sceneId,
-        ...block
+        order_index: block.order_index,
+        speaker_name: block.speaker_name,
+        text_raw: block.text_raw,
+        preceding_cue_raw: block.preceding_cue_raw,
+        section_id: block.section_index !== undefined && sectionIdMap 
+          ? sectionIdMap[block.section_index] 
+          : null
       })))
       .select();
     
@@ -259,14 +367,19 @@ export function useSceneData() {
     currentScene,
     lineBlocks,
     characters,
+    sections,
     loading,
     error,
     fetchScenes,
     fetchScene,
+    fetchSections,
     fetchLineBlocks,
     fetchCharacters,
+    getCharactersInSection,
+    getSectionsForCharacter,
     createScene,
     updateScene,
+    saveSections,
     saveLineBlocks,
     saveCharacters,
     saveStageDirections,
@@ -274,5 +387,6 @@ export function useSceneData() {
     deleteScene,
     setCurrentScene,
     setLineBlocks,
+    setSections,
   };
 }
