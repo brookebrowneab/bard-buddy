@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Eye, EyeOff, ChevronLeft, Languages, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useScene } from "@/context/SceneContext";
@@ -16,6 +17,7 @@ interface LineBlockWithTranslation {
   translation?: {
     translation_text: string | null;
     status: string;
+    review_status: string;
   };
 }
 
@@ -27,31 +29,41 @@ interface ScriptSection {
   order_index: number;
 }
 
-const ModernEnglishGame = () => {
+interface Character {
+  name: string;
+}
+
+const STYLE = "kid_modern_english_v1";
+
+const ModernEnglishSceneViewer = () => {
   const navigate = useNavigate();
   const { activeScriptId, selectedRole } = useScene();
   
   const [sections, setSections] = useState<ScriptSection[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lineBlocks, setLineBlocks] = useState<LineBlockWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
   const [visibleTranslations, setVisibleTranslations] = useState<Set<string>>(new Set());
+
+  // Set character from context
+  useEffect(() => {
+    if (selectedRole) {
+      setSelectedCharacter(selectedRole);
+    }
+  }, [selectedRole]);
 
   // Fetch sections
   useEffect(() => {
     const fetchSections = async () => {
       if (!activeScriptId) return;
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('script_sections')
         .select('*')
         .eq('scene_id', activeScriptId)
         .order('order_index');
-
-      if (error) {
-        console.error('Error fetching sections:', error);
-        return;
-      }
 
       setSections(data || []);
       if (data && data.length > 0) {
@@ -62,7 +74,24 @@ const ModernEnglishGame = () => {
     fetchSections();
   }, [activeScriptId]);
 
-  // Fetch line blocks with translations
+  // Fetch characters
+  useEffect(() => {
+    const fetchCharacters = async () => {
+      if (!activeScriptId) return;
+
+      const { data } = await supabase
+        .from('characters')
+        .select('name')
+        .eq('scene_id', activeScriptId)
+        .order('name');
+
+      setCharacters(data || []);
+    };
+
+    fetchCharacters();
+  }, [activeScriptId]);
+
+  // Fetch line blocks with translations - READ ONLY, no AI calls
   useEffect(() => {
     const fetchLines = async () => {
       if (!activeScriptId) return;
@@ -79,13 +108,7 @@ const ModernEnglishGame = () => {
         query = query.eq('section_id', selectedSectionId);
       }
 
-      const { data: blocks, error } = await query;
-
-      if (error) {
-        console.error('Error fetching line blocks:', error);
-        setLoading(false);
-        return;
-      }
+      const { data: blocks } = await query;
 
       if (!blocks || blocks.length === 0) {
         setLineBlocks([]);
@@ -97,9 +120,9 @@ const ModernEnglishGame = () => {
       const blockIds = blocks.map(b => b.id);
       const { data: translations } = await supabase
         .from('lineblock_translations')
-        .select('lineblock_id, translation_text, status')
+        .select('lineblock_id, translation_text, status, review_status')
         .in('lineblock_id', blockIds)
-        .eq('style', 'plain_english');
+        .eq('style', STYLE);
 
       const translationMap = new Map(
         (translations || []).map(t => [t.lineblock_id, t])
@@ -130,9 +153,9 @@ const ModernEnglishGame = () => {
   };
 
   const showMyTranslations = () => {
-    if (!selectedRole) return;
+    if (!selectedCharacter) return;
     const myLineIds = lineBlocks
-      .filter(lb => lb.speaker_name.toLowerCase() === selectedRole.toLowerCase())
+      .filter(lb => lb.speaker_name.toLowerCase() === selectedCharacter.toLowerCase())
       .map(lb => lb.id);
     setVisibleTranslations(new Set(myLineIds));
   };
@@ -146,7 +169,7 @@ const ModernEnglishGame = () => {
   };
 
   const isMyLine = (speakerName: string) => {
-    return selectedRole && speakerName.toLowerCase() === selectedRole.toLowerCase();
+    return selectedCharacter && speakerName.toLowerCase() === selectedCharacter.toLowerCase();
   };
 
   if (!activeScriptId) {
@@ -177,42 +200,60 @@ const ModernEnglishGame = () => {
           <div className="flex-1">
             <h1 className="font-semibold text-foreground flex items-center gap-2">
               <Languages className="w-5 h-5 text-primary" />
-              Plain English
+              Modern English
             </h1>
-            {selectedRole && (
+            {selectedCharacter && (
               <p className="text-sm text-muted-foreground flex items-center gap-1">
                 <User className="w-3 h-3" />
-                Playing as {selectedRole}
+                Playing as {selectedCharacter}
               </p>
             )}
           </div>
         </div>
       </header>
 
-      {/* Section Picker */}
-      {sections.length > 0 && (
-        <div className="px-4 py-3 border-b border-border bg-muted/30 overflow-x-auto">
-          <div className="flex gap-2">
-            {sections.map((section) => (
-              <Button
-                key={section.id}
-                variant={selectedSectionId === section.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedSectionId(section.id)}
-                className="whitespace-nowrap"
-              >
-                {section.act_number && section.scene_number
-                  ? `Act ${section.act_number}, Scene ${section.scene_number}`
-                  : section.title}
-              </Button>
-            ))}
+      {/* Section & Character Selection */}
+      <div className="px-4 py-3 border-b border-border bg-muted/30 space-y-3">
+        {/* Section Picker */}
+        {sections.length > 0 && (
+          <div className="overflow-x-auto">
+            <div className="flex gap-2">
+              {sections.map((section) => (
+                <Button
+                  key={section.id}
+                  variant={selectedSectionId === section.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedSectionId(section.id)}
+                  className="whitespace-nowrap"
+                >
+                  {section.act_number && section.scene_number
+                    ? `Act ${section.act_number}, Scene ${section.scene_number}`
+                    : section.title}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Character Picker */}
+        {characters.length > 0 && (
+          <Select value={selectedCharacter || "all"} onValueChange={v => setSelectedCharacter(v === "all" ? null : v)}>
+            <SelectTrigger className="w-full max-w-xs">
+              <SelectValue placeholder="Select your character" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Characters</SelectItem>
+              {characters.map(c => (
+                <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {/* Bulk Toggle Controls */}
       <div className="px-4 py-3 border-b border-border bg-card/30 flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={showMyTranslations} disabled={!selectedRole}>
+        <Button variant="outline" size="sm" onClick={showMyTranslations} disabled={!selectedCharacter}>
           <Eye className="w-4 h-4 mr-1" />
           Show My Lines
         </Button>
@@ -241,7 +282,7 @@ const ModernEnglishGame = () => {
             {lineBlocks.map((line) => {
               const isMine = isMyLine(line.speaker_name);
               const isVisible = visibleTranslations.has(line.id);
-              const hasTranslation = (line.translation?.status === 'completed' || line.translation?.status === 'complete') && line.translation.translation_text;
+              const hasTranslation = line.translation?.status === 'complete' && line.translation.translation_text;
 
               return (
                 <Card 
@@ -292,15 +333,15 @@ const ModernEnglishGame = () => {
                           </>
                         )}
 
-                        {!hasTranslation && line.translation?.status === 'error' && (
+                        {!hasTranslation && line.translation?.status === 'failed' && (
                           <p className="mt-2 text-sm text-destructive">
-                            Translation failed
+                            Translation not available
                           </p>
                         )}
 
                         {!line.translation && (
                           <p className="mt-2 text-sm text-muted-foreground italic">
-                            No translation available
+                            No translation available yet
                           </p>
                         )}
                       </div>
@@ -316,4 +357,4 @@ const ModernEnglishGame = () => {
   );
 };
 
-export default ModernEnglishGame;
+export default ModernEnglishSceneViewer;

@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const PROMPT_VERSION = "v1.0";
 const MODEL = "gpt-4o-mini";
+const DEFAULT_STYLE = "kid_modern_english_v1";
 
 const SYSTEM_PROMPT = `You are a Shakespeare translator. Given a line of Shakespearean text, provide a clear, simple modern English translation that a child could understand.
 
@@ -71,7 +72,7 @@ serve(async (req) => {
       });
     }
 
-    const { lineblock_id, style = 'plain_english', force = false } = await req.json();
+    const { lineblock_id, style = DEFAULT_STYLE, force = false } = await req.json();
 
     if (!lineblock_id) {
       return new Response(JSON.stringify({ error: 'lineblock_id is required' }), {
@@ -87,8 +88,8 @@ serve(async (req) => {
         .select('*')
         .eq('lineblock_id', lineblock_id)
         .eq('style', style)
-        .eq('status', 'completed')
-        .single();
+        .eq('status', 'complete')
+        .maybeSingle();
 
       if (existing) {
         return new Response(JSON.stringify({ 
@@ -115,13 +116,15 @@ serve(async (req) => {
       });
     }
 
-    // Upsert translation record as processing
+    // Upsert translation record as pending
     const { error: upsertError } = await supabase
       .from('lineblock_translations')
       .upsert({
         lineblock_id,
         style,
-        status: 'processing',
+        status: 'pending',
+        source: 'ai',
+        review_status: 'needs_review',
         model: MODEL,
         prompt_version: PROMPT_VERSION,
       }, {
@@ -157,7 +160,7 @@ serve(async (req) => {
       await supabase
         .from('lineblock_translations')
         .update({ 
-          status: 'error', 
+          status: 'failed', 
           error: `OpenAI API error: ${openaiResponse.status}` 
         })
         .eq('lineblock_id', lineblock_id)
@@ -175,7 +178,7 @@ serve(async (req) => {
     if (!translationText) {
       await supabase
         .from('lineblock_translations')
-        .update({ status: 'error', error: 'Empty response from OpenAI' })
+        .update({ status: 'failed', error: 'Empty response from OpenAI' })
         .eq('lineblock_id', lineblock_id)
         .eq('style', style);
 
@@ -190,7 +193,7 @@ serve(async (req) => {
       .from('lineblock_translations')
       .update({
         translation_text: translationText,
-        status: 'completed',
+        status: 'complete',
         error: null,
       })
       .eq('lineblock_id', lineblock_id)

@@ -164,13 +164,13 @@ const AdminTranslations = () => {
 
     const { count: completedCount, error: completedError } = await makeTranslationCountQuery().eq(
       "status",
-      "completed"
+      "complete"
     );
     if (completedError) console.error("Error fetching completed translations:", completedError);
 
     const { count: errorCount, error: errorStatusError } = await makeTranslationCountQuery().eq(
       "status",
-      "error"
+      "failed"
     );
     if (errorStatusError) console.error("Error fetching error translations:", errorStatusError);
 

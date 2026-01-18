@@ -97,11 +97,15 @@ export type Database = {
       lineblock_translations: {
         Row: {
           created_at: string
+          edited_at: string | null
+          edited_by_user_id: string | null
           error: string | null
           id: string
           lineblock_id: string
           model: string | null
           prompt_version: string | null
+          review_status: string
+          source: string
           status: string
           style: string
           translation_text: string | null
@@ -109,11 +113,15 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          edited_at?: string | null
+          edited_by_user_id?: string | null
           error?: string | null
           id?: string
           lineblock_id: string
           model?: string | null
           prompt_version?: string | null
+          review_status?: string
+          source?: string
           status?: string
           style?: string
           translation_text?: string | null
@@ -121,11 +129,15 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          edited_at?: string | null
+          edited_by_user_id?: string | null
           error?: string | null
           id?: string
           lineblock_id?: string
           model?: string | null
           prompt_version?: string | null
+          review_status?: string
+          source?: string
           status?: string
           style?: string
           translation_text?: string | null
