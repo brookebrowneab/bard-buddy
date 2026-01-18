@@ -178,7 +178,7 @@ serve(async (req) => {
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
             ],
-            max_tokens: 200,
+            max_completion_tokens: 200,
             temperature: TEMPERATURE,
           }),
         });
