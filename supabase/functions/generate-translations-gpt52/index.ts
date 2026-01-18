@@ -179,7 +179,6 @@ serve(async (req) => {
               { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
             ],
             max_completion_tokens: 200,
-            temperature: TEMPERATURE,
           }),
         });
 
