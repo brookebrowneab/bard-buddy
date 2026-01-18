@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
+import { usePracticeData } from "@/hooks/usePracticeData";
 import PracticeHeader from "@/components/PracticeHeader";
 import PracticeNavigation from "@/components/PracticeNavigation";
-import { Quote, MessageSquare, Scroll, Eye } from "lucide-react";
+import { Quote, MessageSquare, Scroll, Loader2 } from "lucide-react";
 
 const PlainEnglish = () => {
-  const { getCurrentLine, selectedRole, currentLineIndex } = useScene();
+  const { getCurrentLine, selectedRole, currentLineIndex, totalLines } = useScene();
+  const { loading, error } = usePracticeData();
   const [isRevealed, setIsRevealed] = useState(false);
   const navigate = useNavigate();
 
@@ -18,9 +20,39 @@ const PlainEnglish = () => {
     setIsRevealed(false);
   }, [currentLineIndex]);
 
-  if (!selectedRole || !line) {
-    navigate("/role-picker");
-    return null;
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center px-6">
+          <p className="text-destructive mb-4">{error}</p>
+          <Button onClick={() => navigate('/scenes')}>Choose a Scene</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // No lines for this role
+  if (!line || totalLines === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center px-6">
+          <p className="text-muted-foreground mb-4">
+            No lines found for {selectedRole} in this scene
+          </p>
+          <Button onClick={() => navigate('/scenes')}>Choose a Scene</Button>
+        </div>
+      </div>
+    );
   }
 
   const handleReveal = () => {
@@ -58,7 +90,7 @@ const PlainEnglish = () => {
             </div>
             <div className="p-5 bg-primary/5 rounded-lg border border-primary/20">
               <p className="text-lg text-foreground leading-relaxed">
-                {line.modern_hint}
+                {line.modern_hint || "(No modern translation available)"}
               </p>
             </div>
           </div>

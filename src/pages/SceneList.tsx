@@ -1,30 +1,41 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useSceneData } from '@/hooks/useSceneData';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { useScene } from '@/context/SceneContext';
-import { ArrowLeft, Plus, FileText, Trash2, Play, Edit, Loader2 } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { useProduction } from '@/hooks/useProduction';
+import { ArrowLeft, Layers, Loader2, Play } from 'lucide-react';
+import type { ScriptSection } from '@/types/scene';
 
 const SceneList = () => {
   const navigate = useNavigate();
-  const { scenes, fetchScenes, deleteScene, loading } = useSceneData();
-  const { selectedMode, setSceneId, setSceneTitle } = useScene();
+  const { 
+    selectedMode, 
+    setActiveScriptId, 
+    setProductionName,
+    setSelectedSection,
+  } = useScene();
+  const { 
+    production, 
+    sections, 
+    loading, 
+    fetchActiveProduction, 
+    fetchProductionSections 
+  } = useProduction();
 
   useEffect(() => {
-    fetchScenes();
-  }, [fetchScenes]);
+    const loadProduction = async () => {
+      const prod = await fetchActiveProduction();
+      if (prod) {
+        setProductionName(prod.name);
+        setActiveScriptId(prod.active_scene_id);
+        if (prod.active_scene_id) {
+          await fetchProductionSections(prod.active_scene_id);
+        }
+      }
+    };
+    loadProduction();
+  }, [fetchActiveProduction, fetchProductionSections, setActiveScriptId, setProductionName]);
 
   // Redirect if no mode selected
   useEffect(() => {
@@ -33,14 +44,9 @@ const SceneList = () => {
     }
   }, [selectedMode, navigate]);
 
-  const handleDelete = async (sceneId: string) => {
-    await deleteScene(sceneId);
-  };
-
-  const handleSelectScene = (scene: { id: string; title: string }) => {
-    setSceneId(scene.id);
-    setSceneTitle(scene.title);
-    navigate(`/role-picker/${scene.id}`);
+  const handleSelectSection = (section: ScriptSection) => {
+    setSelectedSection(section);
+    navigate(`/role-picker/${section.id}`);
   };
 
   return (
@@ -57,67 +63,60 @@ const SceneList = () => {
           Back to Games
         </Button>
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
-          Choose a Scene
+          {production?.name || 'Choose a Scene'}
         </h1>
         <p className="text-center text-muted-foreground mt-2 text-sm">
-          {scenes.length} scene{scenes.length !== 1 ? 's' : ''} available
+          {sections.length} scene{sections.length !== 1 ? 's' : ''} available
         </p>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 px-6 py-4">
-        <div className="max-w-md mx-auto space-y-4">
+        <div className="max-w-md mx-auto space-y-3">
           {/* Loading */}
-          {loading && scenes.length === 0 && (
+          {loading && sections.length === 0 && (
             <div className="flex justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           )}
 
           {/* Empty State */}
-          {!loading && scenes.length === 0 && (
+          {!loading && sections.length === 0 && (
             <Card className="border-dashed">
-              <CardContent className="py-12 text-center">
-                <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <CardHeader className="py-12 text-center">
+                <Layers className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
-                  No scenes uploaded yet
+                  No scenes available yet
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
                   Ask an admin to upload a script
                 </p>
-                <Button
-                  variant="stage"
-                  size="lg"
-                  className="mt-4"
-                  onClick={() => navigate('/upload')}
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Upload Scene
-                </Button>
-              </CardContent>
+              </CardHeader>
             </Card>
           )}
 
-          {/* Scene List */}
-          {scenes.map((scene) => (
+          {/* Flat list of Act/Scenes */}
+          {sections.map((section) => (
             <Card 
-              key={scene.id} 
+              key={section.id} 
               className="overflow-hidden cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => handleSelectScene(scene)}
+              onClick={() => handleSelectSection(section)}
             >
               <CardHeader className="py-4 px-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3 flex-1">
                     <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-6 h-6 text-primary" />
+                      <Layers className="w-6 h-6 text-primary" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-lg font-semibold text-foreground">
-                        {scene.title}
+                        {section.title}
                       </CardTitle>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {scene.source_pdf || 'Manual entry'}
-                      </p>
+                      {section.act_number && section.scene_number && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Act {section.act_number}, Scene {section.scene_number}
+                        </p>
+                      )}
                     </div>
                     <Play className="w-5 h-5 text-primary flex-shrink-0" />
                   </div>
