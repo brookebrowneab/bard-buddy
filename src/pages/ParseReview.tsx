@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useSceneData } from '@/hooks/useSceneData';
-import { ArrowLeft, Save, RefreshCw, Loader2, Check, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, RefreshCw, Loader2, Check, ChevronDown, ChevronUp, Trash2, ArrowRightLeft } from 'lucide-react';
 import type { LineBlock } from '@/types/scene';
 
 const ParseReview = () => {
@@ -20,6 +20,7 @@ const ParseReview = () => {
     fetchLineBlocks, 
     updateLineBlock,
     deleteLineBlock,
+    convertToStageDirection,
     saveLineBlocks,
     loading 
   } = useSceneData();
@@ -119,6 +120,24 @@ const ParseReview = () => {
       toast({
         title: 'Delete failed',
         description: 'Failed to delete line block',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleConvertToStageDirection = async (block: LineBlock) => {
+    const success = await convertToStageDirection(block);
+    if (success) {
+      setEditedBlocks(prev => prev.filter(b => b.id !== block.id));
+      setExpandedBlock(null);
+      toast({
+        title: 'Converted to stage direction',
+        description: 'The line has been moved to stage directions',
+      });
+    } else {
+      toast({
+        title: 'Conversion failed',
+        description: 'Failed to convert to stage direction',
         variant: 'destructive',
       });
     }
@@ -266,16 +285,27 @@ const ParseReview = () => {
                       />
                     </div>
                     
-                    {/* Delete Button */}
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteBlock(block.id)}
-                      className="w-full"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete This Line
-                    </Button>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleConvertToStageDirection(block)}
+                        className="flex-1"
+                      >
+                        <ArrowRightLeft className="w-4 h-4 mr-2" />
+                        Convert to Stage Direction
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteBlock(block.id)}
+                        className="flex-1"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </Button>
+                    </div>
                   </CardContent>
                 )}
               </Card>
