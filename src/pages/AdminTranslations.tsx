@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles } from "lucide-react";
+import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
@@ -352,6 +352,57 @@ const AdminTranslations = () => {
     }
   };
 
+  const handleRetryFailedGpt5 = async () => {
+    if (!selectedSceneId || gpt5Stats.error === 0) return;
+
+    try {
+      // Delete failed GPT-5 translations so they can be retried
+      let deleteQuery = supabase
+        .from('lineblock_translations')
+        .delete()
+        .eq('style', 'plain_english_gpt5')
+        .eq('status', 'failed');
+
+      // If section is selected, we need to filter by lineblock's section
+      if (selectedSectionId) {
+        // Get lineblock IDs for this section first
+        const { data: lineBlocks } = await supabase
+          .from('line_blocks')
+          .select('id')
+          .eq('scene_id', selectedSceneId)
+          .eq('section_id', selectedSectionId);
+
+        if (lineBlocks && lineBlocks.length > 0) {
+          const ids = lineBlocks.map(lb => lb.id);
+          deleteQuery = deleteQuery.in('lineblock_id', ids);
+        }
+      } else {
+        // Get all lineblock IDs for this scene
+        const { data: lineBlocks } = await supabase
+          .from('line_blocks')
+          .select('id')
+          .eq('scene_id', selectedSceneId);
+
+        if (lineBlocks && lineBlocks.length > 0) {
+          const ids = lineBlocks.map(lb => lb.id);
+          deleteQuery = deleteQuery.in('lineblock_id', ids);
+        }
+      }
+
+      const { error } = await deleteQuery;
+      if (error) throw error;
+
+      toast.success(`Cleared ${gpt5Stats.error} failed translations. Starting regeneration...`);
+      setRefreshKey(prev => prev + 1);
+      
+      // Auto-start generation
+      handleGenerateGpt52();
+    } catch (error: any) {
+      console.error('Error retrying failed:', error);
+      toast.error('Failed to clear failed translations');
+    }
+  };
+
   const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
 
   if (!isAdmin) {
@@ -587,14 +638,27 @@ const AdminTranslations = () => {
                       Cancel GPT-5 Generation
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleGenerateGpt52}
-                      disabled={stats.total === 0 || generating}
-                      className="w-full bg-purple-600 hover:bg-purple-700"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Generate GPT-5 Translations
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleGenerateGpt52}
+                        disabled={stats.total === 0 || generating}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700"
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate GPT-5
+                      </Button>
+                      {gpt5Stats.error > 0 && (
+                        <Button
+                          onClick={handleRetryFailedGpt5}
+                          disabled={generating || generatingGpt52}
+                          variant="outline"
+                          className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                        >
+                          <RotateCcw className="w-4 h-4 mr-2" />
+                          Retry {gpt5Stats.error} Failed
+                        </Button>
+                      )}
+                    </div>
                   )}
 
                   {gpt5Stats.pending > 0 && (
