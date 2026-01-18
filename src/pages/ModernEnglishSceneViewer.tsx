@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Eye, EyeOff, ChevronLeft, Languages, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useScene } from "@/context/SceneContext";
+import { CANONICAL_SCENE_ID } from "@/config/canonicalScenes";
 
 interface LineBlockWithTranslation {
   id: string;
@@ -33,11 +34,23 @@ interface Character {
   name: string;
 }
 
-const STYLE = "kid_modern_english_v1";
+const STYLE = "plain_english";
+
+// localStorage keys for persisting toggles
+const STORAGE_KEYS = {
+  VISIBLE_MODE: 'modernEnglish_visibleMode',
+  SELECTED_SECTION: 'modernEnglish_selectedSection',
+  SELECTED_CHARACTER: 'modernEnglish_selectedCharacter',
+};
+
+type VisibleMode = 'none' | 'mine' | 'all';
 
 const ModernEnglishSceneViewer = () => {
   const navigate = useNavigate();
-  const { activeScriptId, selectedRole } = useScene();
+  const { selectedRole } = useScene();
+  
+  // Always use canonical scene for kid-facing viewer
+  const sceneId = CANONICAL_SCENE_ID;
   
   const [sections, setSections] = useState<ScriptSection[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -45,63 +58,91 @@ const ModernEnglishSceneViewer = () => {
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [lineBlocks, setLineBlocks] = useState<LineBlockWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleMode, setVisibleMode] = useState<VisibleMode>('none');
   const [visibleTranslations, setVisibleTranslations] = useState<Set<string>>(new Set());
+
+  // Load persisted settings on mount
+  useEffect(() => {
+    const savedMode = localStorage.getItem(STORAGE_KEYS.VISIBLE_MODE) as VisibleMode | null;
+    const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
+    const savedCharacter = localStorage.getItem(STORAGE_KEYS.SELECTED_CHARACTER);
+    
+    if (savedMode) setVisibleMode(savedMode);
+    if (savedSection) setSelectedSectionId(savedSection);
+    if (savedCharacter) setSelectedCharacter(savedCharacter);
+  }, []);
 
   // Set character from context
   useEffect(() => {
-    if (selectedRole) {
+    if (selectedRole && !selectedCharacter) {
       setSelectedCharacter(selectedRole);
+      localStorage.setItem(STORAGE_KEYS.SELECTED_CHARACTER, selectedRole);
     }
-  }, [selectedRole]);
+  }, [selectedRole, selectedCharacter]);
+
+  // Persist settings changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.VISIBLE_MODE, visibleMode);
+  }, [visibleMode]);
+
+  useEffect(() => {
+    if (selectedSectionId) {
+      localStorage.setItem(STORAGE_KEYS.SELECTED_SECTION, selectedSectionId);
+    }
+  }, [selectedSectionId]);
+
+  useEffect(() => {
+    if (selectedCharacter) {
+      localStorage.setItem(STORAGE_KEYS.SELECTED_CHARACTER, selectedCharacter);
+    }
+  }, [selectedCharacter]);
 
   // Fetch sections
   useEffect(() => {
     const fetchSections = async () => {
-      if (!activeScriptId) return;
-
       const { data } = await supabase
         .from('script_sections')
         .select('*')
-        .eq('scene_id', activeScriptId)
+        .eq('scene_id', sceneId)
         .order('order_index');
 
       setSections(data || []);
+      
+      // Set initial section from localStorage or first section
       if (data && data.length > 0) {
-        setSelectedSectionId(data[0].id);
+        const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
+        const validSection = data.find(s => s.id === savedSection);
+        setSelectedSectionId(validSection?.id || data[0].id);
       }
     };
 
     fetchSections();
-  }, [activeScriptId]);
+  }, [sceneId]);
 
   // Fetch characters
   useEffect(() => {
     const fetchCharacters = async () => {
-      if (!activeScriptId) return;
-
       const { data } = await supabase
         .from('characters')
         .select('name')
-        .eq('scene_id', activeScriptId)
+        .eq('scene_id', sceneId)
         .order('name');
 
       setCharacters(data || []);
     };
 
     fetchCharacters();
-  }, [activeScriptId]);
+  }, [sceneId]);
 
   // Fetch line blocks with translations - READ ONLY, no AI calls
   useEffect(() => {
     const fetchLines = async () => {
-      if (!activeScriptId) return;
-      
       setLoading(true);
 
       let query = supabase
         .from('line_blocks')
         .select('id, order_index, speaker_name, text_raw, section_id')
-        .eq('scene_id', activeScriptId)
+        .eq('scene_id', sceneId)
         .order('order_index');
 
       if (selectedSectionId) {
@@ -138,7 +179,21 @@ const ModernEnglishSceneViewer = () => {
     };
 
     fetchLines();
-  }, [activeScriptId, selectedSectionId]);
+  }, [sceneId, selectedSectionId]);
+
+  // Update visible translations when mode or data changes
+  useEffect(() => {
+    if (visibleMode === 'none') {
+      setVisibleTranslations(new Set());
+    } else if (visibleMode === 'all') {
+      setVisibleTranslations(new Set(lineBlocks.map(lb => lb.id)));
+    } else if (visibleMode === 'mine' && selectedCharacter) {
+      const myLineIds = lineBlocks
+        .filter(lb => lb.speaker_name.toLowerCase() === selectedCharacter.toLowerCase())
+        .map(lb => lb.id);
+      setVisibleTranslations(new Set(myLineIds));
+    }
+  }, [visibleMode, lineBlocks, selectedCharacter]);
 
   const toggleTranslation = (lineId: string) => {
     setVisibleTranslations(prev => {
@@ -150,40 +205,25 @@ const ModernEnglishSceneViewer = () => {
       }
       return next;
     });
+    // When manually toggling, we're in a custom state
+    setVisibleMode('none');
   };
 
   const showMyTranslations = () => {
-    if (!selectedCharacter) return;
-    const myLineIds = lineBlocks
-      .filter(lb => lb.speaker_name.toLowerCase() === selectedCharacter.toLowerCase())
-      .map(lb => lb.id);
-    setVisibleTranslations(new Set(myLineIds));
+    setVisibleMode('mine');
   };
 
   const showAllTranslations = () => {
-    setVisibleTranslations(new Set(lineBlocks.map(lb => lb.id)));
+    setVisibleMode('all');
   };
 
   const hideAllTranslations = () => {
-    setVisibleTranslations(new Set());
+    setVisibleMode('none');
   };
 
   const isMyLine = (speakerName: string) => {
     return selectedCharacter && speakerName.toLowerCase() === selectedCharacter.toLowerCase();
   };
-
-  if (!activeScriptId) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center px-6">
-          <p className="text-muted-foreground mb-4">No script selected</p>
-          <Button onClick={() => navigate('/practice-modes')}>
-            Choose a Game
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -253,15 +293,28 @@ const ModernEnglishSceneViewer = () => {
 
       {/* Bulk Toggle Controls */}
       <div className="px-4 py-3 border-b border-border bg-card/30 flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={showMyTranslations} disabled={!selectedCharacter}>
+        <Button 
+          variant={visibleMode === 'mine' ? "default" : "outline"} 
+          size="sm" 
+          onClick={showMyTranslations} 
+          disabled={!selectedCharacter}
+        >
           <Eye className="w-4 h-4 mr-1" />
           Show My Lines
         </Button>
-        <Button variant="outline" size="sm" onClick={showAllTranslations}>
+        <Button 
+          variant={visibleMode === 'all' ? "default" : "outline"} 
+          size="sm" 
+          onClick={showAllTranslations}
+        >
           <Eye className="w-4 h-4 mr-1" />
           Show All
         </Button>
-        <Button variant="outline" size="sm" onClick={hideAllTranslations}>
+        <Button 
+          variant={visibleMode === 'none' ? "default" : "outline"} 
+          size="sm" 
+          onClick={hideAllTranslations}
+        >
           <EyeOff className="w-4 h-4 mr-1" />
           Hide All
         </Button>
