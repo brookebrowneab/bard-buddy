@@ -1,1 +1,10 @@
 project_id = "etenhvzfurbleqpbfrjo"
+
+[functions.parse-pdf]
+verify_jwt = false
+
+[functions.generate-lineblock-translation]
+verify_jwt = false
+
+[functions.generate-translations-bulk]
+verify_jwt = false
