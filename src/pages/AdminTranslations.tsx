@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert } from "lucide-react";
+import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
@@ -40,9 +40,11 @@ const AdminTranslations = () => {
   const [stats, setStats] = useState<TranslationStats>({ total: 0, completed: 0, pending: 0, error: 0 });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingGpt52, setGeneratingGpt52] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const cancelRef = useRef(false);
+  const cancelGpt52Ref = useRef(false);
 
   // Check admin status
   useEffect(() => {
@@ -270,6 +272,61 @@ const AdminTranslations = () => {
     cancelRef.current = true;
   };
 
+  const handleGenerateGpt52 = async () => {
+    if (!selectedSceneId) return;
+
+    setGeneratingGpt52(true);
+    cancelGpt52Ref.current = false;
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please log in');
+        return;
+      }
+
+      let hasMore = true;
+      let totalProcessed = 0;
+
+      while (hasMore && !cancelGpt52Ref.current) {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-translations-gpt52`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              scene_id: selectedSceneId,
+              section_id: selectedSectionId,
+            }),
+          }
+        );
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        totalProcessed += result.processed || 0;
+        hasMore = result.has_more === true;
+        
+        toast.info(`GPT-5.2: Processed ${totalProcessed} (${result.remaining} remaining)`);
+        setRefreshKey(prev => prev + 1);
+      }
+
+      if (cancelGpt52Ref.current) {
+        toast.info(`Cancelled GPT-5.2 after ${totalProcessed} translations.`);
+      } else {
+        toast.success(`GPT-5.2 generated ${totalProcessed} translations.`);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to generate GPT-5.2 translations');
+    } finally {
+      setGeneratingGpt52(false);
+      cancelGpt52Ref.current = false;
+    }
+  };
+
   const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
 
   if (!isAdmin) {
@@ -419,6 +476,27 @@ const AdminTranslations = () => {
                     >
                       <Play className="w-4 h-4 mr-2" />
                       Generate Missing Translations
+                    </Button>
+                  )}
+
+                  {generatingGpt52 ? (
+                    <Button
+                      onClick={() => { cancelGpt52Ref.current = true; }}
+                      variant="destructive"
+                      className="w-full"
+                    >
+                      <Square className="w-4 h-4 mr-2" />
+                      Cancel GPT-5.2
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleGenerateGpt52}
+                      disabled={stats.total === 0 || generating}
+                      variant="outline"
+                      className="w-full text-purple-600 border-purple-600 hover:bg-purple-50"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate GPT-5.2 Translations
                     </Button>
                   )}
 
