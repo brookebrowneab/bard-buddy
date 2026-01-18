@@ -17,6 +17,7 @@ import ParseReview from "./pages/ParseReview";
 import SceneList from "./pages/SceneList";
 import ModernEnglishGame from "./pages/ModernEnglishGame";
 import AdminTranslations from "./pages/AdminTranslations";
+import AdminLogin from "./pages/AdminLogin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/practice/scramble" element={<Scramble />} />
             <Route path="/practice/plain-english" element={<PlainEnglish />} />
             <Route path="/modern-english" element={<ModernEnglishGame />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/translations" element={<AdminTranslations />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
