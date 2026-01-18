@@ -6,9 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const PROMPT_VERSION = "gpt52_v1";
-const MODEL = "openai/gpt-5.2";
-const STYLE = "plain_english_gpt52_v1";
+const PROMPT_VERSION = "gpt5_v1";
+const MODEL = "openai/gpt-5";
+const STYLE = "plain_english_gpt5";
 const TEMPERATURE = 0.15;
 // Process max 10 lines per request to avoid timeout (edge functions have 60s limit)
 const MAX_LINES_PER_REQUEST = 10;
