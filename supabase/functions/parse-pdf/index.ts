@@ -24,6 +24,14 @@ interface ParseResult {
   characters: string[];
 }
 
+// Known character names from play scripts (common patterns)
+const KNOWN_SPEAKER_PATTERNS = [
+  'Messenger', 'First', 'Second', 'Third', 'Servant', 'Attendant', 'Officer',
+  'Guard', 'Watchman', 'Soldier', 'Gentleman', 'Lady', 'Lord', 'Duke', 'King',
+  'Queen', 'Prince', 'Princess', 'Nurse', 'Friar', 'Boy', 'Girl', 'Man', 'Woman',
+  'Chorus', 'Prologue', 'Epilogue', 'Captain', 'Page', 'Clown'
+];
+
 // Helper: Check if a line is a speaker label
 function isSpeakerLabel(line: string): boolean {
   const trimmed = line.trim();
@@ -46,31 +54,50 @@ function isSpeakerLabel(line: string): boolean {
     return false;
   }
 
+  // Check if it starts with a known speaker pattern (handles title-case like "Messenger")
+  for (const pattern of KNOWN_SPEAKER_PATTERNS) {
+    if (candidate === pattern || candidate.startsWith(pattern + ' ')) {
+      return true;
+    }
+  }
+
   // Check if mostly uppercase letters (allow apostrophes, hyphens, spaces)
   const cleanedLine = candidate.replace(/[\s'-]/g, '');
   const isUppercase =
     cleanedLine === cleanedLine.toUpperCase() && /^[A-Z]+$/.test(cleanedLine);
 
-  return isUppercase;
+  // Also accept single title-case words that look like names (1-2 words, capitalized)
+  const isTitleCaseName = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)?$/.test(candidate);
+
+  return isUppercase || isTitleCaseName;
 }
 
-// Helper: detect "INLINE" speaker starts like "LEONATO I learn..."
+// Helper: detect "INLINE" speaker starts like "LEONATO I learn..." or "Messenger He is..."
 function parseInlineSpeakerStart(line: string): { speakerLabel: string; rest: string } | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
-  // e.g. "DON PEDRO ..." or "FIRST WATCHMAN ..."
-  const match = trimmed.match(/^([A-Z][A-Z'\- ]{1,40}?)[.:]?\s+(.*)$/);
-  if (!match) return null;
+  // Match uppercase speakers: "DON PEDRO ..." or "FIRST WATCHMAN ..."
+  const upperMatch = trimmed.match(/^([A-Z][A-Z'\- ]{1,40}?)[.:]?\s+(.+)$/);
+  if (upperMatch) {
+    const speakerLabel = upperMatch[1].trim().replace(/[\s]+/g, ' ');
+    const rest = (upperMatch[2] ?? '').trim();
+    if (isSpeakerLabel(speakerLabel) && rest) {
+      return { speakerLabel, rest };
+    }
+  }
 
-  const speakerLabel = match[1].trim().replace(/[\s]+/g, ' ');
-  const rest = (match[2] ?? '').trim();
+  // Match title-case speakers: "Messenger He is..." or known patterns
+  const titleMatch = trimmed.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)[.:]?\s+(.+)$/);
+  if (titleMatch) {
+    const speakerLabel = titleMatch[1].trim();
+    const rest = (titleMatch[2] ?? '').trim();
+    if (isSpeakerLabel(speakerLabel) && rest) {
+      return { speakerLabel, rest };
+    }
+  }
 
-  // Validate the extracted prefix using the same speaker-label rules
-  if (!isSpeakerLabel(speakerLabel)) return null;
-  if (!rest) return null;
-
-  return { speakerLabel, rest };
+  return null;
 }
 
 // Helper: Check if a line is a stage direction
