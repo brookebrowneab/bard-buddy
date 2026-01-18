@@ -32,7 +32,7 @@ const App = () => (
             <Route path="/scenes" element={<SceneList />} />
             <Route path="/parse-review/:sceneId" element={<ParseReview />} />
             <Route path="/role-picker" element={<RolePicker />} />
-            <Route path="/role-picker/:sceneId" element={<RolePicker />} />
+            <Route path="/role-picker/:sectionId" element={<RolePicker />} />
             <Route path="/section-picker" element={<SectionPicker />} />
             <Route path="/section-picker/:sceneId" element={<SectionPicker />} />
             <Route path="/practice/cue-say-it" element={<CueSayIt />} />

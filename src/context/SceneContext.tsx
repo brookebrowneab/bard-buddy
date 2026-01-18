@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { sampleScene } from '@/data/sampleScene';
-import type { LineBlock } from '@/types/scene';
+import type { LineBlock, ScriptSection } from '@/types/scene';
 
 // Unified line interface for practice modes
 export interface PracticeLine {
@@ -11,11 +11,17 @@ export interface PracticeLine {
 }
 
 interface SceneContextType {
-  // Scene info
-  sceneId: string | null;
-  sceneTitle: string;
-  setSceneId: (id: string | null) => void;
-  setSceneTitle: (title: string) => void;
+  // Production's active script ID (the "scene" in the scenes table)
+  activeScriptId: string | null;
+  setActiveScriptId: (id: string | null) => void;
+  
+  // Production info
+  productionName: string;
+  setProductionName: (name: string) => void;
+  
+  // Selected section (Act/Scene from script_sections)
+  selectedSection: ScriptSection | null;
+  setSelectedSection: (section: ScriptSection | null) => void;
   
   // Practice mode selection
   selectedMode: string | null;
@@ -47,18 +53,31 @@ interface SceneContextType {
   
   // Use sample scene
   useSampleScene: () => void;
+  
+  // Legacy compatibility (sceneId maps to activeScriptId, sceneTitle to section title)
+  sceneId: string | null;
+  sceneTitle: string;
+  setSceneId: (id: string | null) => void;
+  setSceneTitle: (title: string) => void;
 }
 
 const SceneContext = createContext<SceneContextType | undefined>(undefined);
 
 export const SceneProvider = ({ children }: { children: ReactNode }) => {
-  const [sceneId, setSceneId] = useState<string | null>(null);
-  const [sceneTitle, setSceneTitle] = useState<string>(sampleScene.title);
+  const [activeScriptId, setActiveScriptId] = useState<string | null>(null);
+  const [productionName, setProductionName] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<ScriptSection | null>(null);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [characters, setCharacters] = useState<string[]>(sampleScene.characters);
   const [practiceLines, setPracticeLines] = useState<PracticeLine[]>([]);
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
+
+  // Legacy compatibility
+  const sceneId = activeScriptId;
+  const sceneTitle = selectedSection?.title || productionName || sampleScene.title;
+  const setSceneId = setActiveScriptId;
+  const setSceneTitle = (title: string) => setProductionName(title);
 
   // Filter lines for selected role
   const filteredLines = selectedRole 
@@ -127,16 +146,25 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
   return (
     <SceneContext.Provider
       value={{
-        sceneId,
-        sceneTitle,
-        setSceneId,
-        setSceneTitle,
+        // New production-centric props
+        activeScriptId,
+        setActiveScriptId,
+        productionName,
+        setProductionName,
+        selectedSection,
+        setSelectedSection,
+        
+        // Practice mode
         selectedMode,
         setSelectedMode,
+        
+        // Role
         selectedRole,
         setSelectedRole: handleSetSelectedRole,
         characters,
         setCharacters,
+        
+        // Lines
         practiceLines,
         setPracticeLines,
         currentLineIndex,
@@ -150,6 +178,12 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
         totalLines: filteredLines.length,
         loadFromLineBlocks,
         useSampleScene,
+        
+        // Legacy compatibility
+        sceneId,
+        sceneTitle,
+        setSceneId,
+        setSceneTitle,
       }}
     >
       {children}

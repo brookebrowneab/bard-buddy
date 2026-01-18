@@ -139,12 +139,51 @@ export type Database = {
           },
         ]
       }
+      productions: {
+        Row: {
+          active_scene_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active_scene_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active_scene_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "productions_active_scene_id_fkey"
+            columns: ["active_scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scenes: {
         Row: {
           created_at: string
           id: string
           normalized_text: string | null
           pdf_text_raw: string | null
+          production_id: string | null
           source_pdf: string | null
           title: string
         }
@@ -153,6 +192,7 @@ export type Database = {
           id?: string
           normalized_text?: string | null
           pdf_text_raw?: string | null
+          production_id?: string | null
           source_pdf?: string | null
           title?: string
         }
@@ -161,10 +201,19 @@ export type Database = {
           id?: string
           normalized_text?: string | null
           pdf_text_raw?: string | null
+          production_id?: string | null
           source_pdf?: string | null
           title?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "scenes_production_id_fkey"
+            columns: ["production_id"]
+            isOneToOne: false
+            referencedRelation: "productions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       script_sections: {
         Row: {
