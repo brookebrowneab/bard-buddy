@@ -107,25 +107,46 @@ function isSpeakerLabel(line: string): boolean {
 }
 
 // Helper: detect "INLINE" speaker starts like "LEONATO I learn..." or "Messenger He is..."
+// This is ONLY for scripts where speaker and dialogue are on the same line.
+// We must be very strict to avoid false positives like "He is..." or "Good morning..."
 function parseInlineSpeakerStart(line: string): { speakerLabel: string; rest: string } | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
-  // Uppercase speakers: "DON PEDRO ..." or "LEONATO: ..."
-  const upperMatch = trimmed.match(/^([A-Z][A-Z'\- ]{1,40}?)[.:]?\s+(.+)$/);
+  // Pattern 1: All-uppercase speaker followed by dialogue
+  // e.g., "DON PEDRO Good Signior..." or "LEONATO: I learn..."
+  // Must be at least 2 uppercase words OR a known uppercase name
+  const upperMatch = trimmed.match(/^([A-Z][A-Z'\-]+(?:\s+[A-Z][A-Z'\-]+)*)[.:]?\s+(.+)$/);
   if (upperMatch) {
     const speakerLabel = upperMatch[1].trim().replace(/[\s]+/g, ' ');
     const rest = (upperMatch[2] ?? '').trim();
-    if (isSpeakerLabel(speakerLabel) && rest) return { speakerLabel, rest };
+    // Validate it's truly a speaker (all uppercase, not a heading)
+    const cleanedSpeaker = speakerLabel.replace(/[\s'-]/g, '');
+    const isAllUppercase = cleanedSpeaker === cleanedSpeaker.toUpperCase() && /^[A-Z]+$/.test(cleanedSpeaker);
+    if (isAllUppercase && !isActOrSceneHeading(speakerLabel) && !isStageDirection(speakerLabel) && rest) {
+      return { speakerLabel, rest };
+    }
   }
 
-  // Title-case role speakers ONLY (avoid false positives like "Good Signior ...")
-  // Examples: "Messenger He is...", "First Watchman Who goes there?"
-  const titleMatch = trimmed.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})[.:]?\s+(.+)$/);
-  if (titleMatch) {
-    const speakerLabel = titleMatch[1].trim();
-    const rest = (titleMatch[2] ?? '').trim();
-    if (isSpeakerLabel(speakerLabel) && rest) return { speakerLabel, rest };
+  // Pattern 2: Known title-case role speaker followed by dialogue
+  // e.g., "Messenger He is..." or "First Watchman Who goes..."
+  // ONLY match if the prefix is a known role - NOT arbitrary title-case words
+  for (const role of KNOWN_SPEAKER_PATTERNS) {
+    // Exact match: "Messenger He is..."
+    const exactPattern = new RegExp(`^(${role})[.:]?\\s+(.+)$`);
+    const exactMatch = trimmed.match(exactPattern);
+    if (exactMatch) {
+      return { speakerLabel: exactMatch[1], rest: exactMatch[2].trim() };
+    }
+    
+    // Ordinal match: "First Watchman Who goes..."
+    if (['First', 'Second', 'Third'].includes(role)) {
+      const ordPattern = new RegExp(`^(${role}\\s+[A-Z][a-z]+)[.:]?\\s+(.+)$`);
+      const ordMatch = trimmed.match(ordPattern);
+      if (ordMatch && isKnownRoleSpeaker(ordMatch[1])) {
+        return { speakerLabel: ordMatch[1], rest: ordMatch[2].trim() };
+      }
+    }
   }
 
   return null;
