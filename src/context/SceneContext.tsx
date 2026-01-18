@@ -17,6 +17,10 @@ interface SceneContextType {
   setSceneId: (id: string | null) => void;
   setSceneTitle: (title: string) => void;
   
+  // Practice mode selection
+  selectedMode: string | null;
+  setSelectedMode: (mode: string | null) => void;
+  
   // Role selection
   selectedRole: string | null;
   setSelectedRole: (role: string | null) => void;
@@ -50,6 +54,7 @@ const SceneContext = createContext<SceneContextType | undefined>(undefined);
 export const SceneProvider = ({ children }: { children: ReactNode }) => {
   const [sceneId, setSceneId] = useState<string | null>(null);
   const [sceneTitle, setSceneTitle] = useState<string>(sampleScene.title);
+  const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [characters, setCharacters] = useState<string[]>(sampleScene.characters);
   const [practiceLines, setPracticeLines] = useState<PracticeLine[]>([]);
@@ -126,6 +131,8 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
         sceneTitle,
         setSceneId,
         setSceneTitle,
+        selectedMode,
+        setSelectedMode,
         selectedRole,
         setSelectedRole: handleSetSelectedRole,
         characters,

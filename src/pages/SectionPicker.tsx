@@ -11,6 +11,7 @@ const SectionPicker = () => {
   const navigate = useNavigate();
   const { 
     selectedRole, 
+    selectedMode,
     setSceneId, 
     setSceneTitle, 
     loadFromLineBlocks,
@@ -64,7 +65,17 @@ const SectionPicker = () => {
     
     if (blocks && selectedRole) {
       loadFromLineBlocks(blocks, selectedRole);
-      navigate('/practice-modes');
+      // Navigate to the selected practice mode
+      navigate(selectedMode || '/practice/cue-say-it');
+    }
+  };
+
+  const handlePracticeAll = async () => {
+    // Fetch all lines for this character across all sections
+    const allBlocks = await fetchLineBlocks(activeSceneId!);
+    if (allBlocks && selectedRole) {
+      loadFromLineBlocks(allBlocks, selectedRole);
+      navigate(selectedMode || '/practice/cue-say-it');
     }
   };
 
@@ -172,14 +183,7 @@ const SectionPicker = () => {
           {/* Practice All option */}
           {availableSections.length > 1 && (
             <button
-              onClick={async () => {
-                // Fetch all lines for this character across all sections
-                const allBlocks = await fetchLineBlocks(activeSceneId!);
-                if (allBlocks && selectedRole) {
-                  loadFromLineBlocks(allBlocks, selectedRole);
-                  navigate('/practice-modes');
-                }
-              }}
+              onClick={handlePracticeAll}
               className="w-full p-5 rounded-lg border-2 border-dashed border-primary/30 text-center transition-all duration-200 hover:border-primary hover:bg-primary/5"
             >
               <p className="font-serif text-lg font-semibold text-primary">
