@@ -94,6 +94,53 @@ export type Database = {
           },
         ]
       }
+      lineblock_translations: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          lineblock_id: string
+          model: string | null
+          prompt_version: string | null
+          status: string
+          style: string
+          translation_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          lineblock_id: string
+          model?: string | null
+          prompt_version?: string | null
+          status?: string
+          style?: string
+          translation_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          lineblock_id?: string
+          model?: string | null
+          prompt_version?: string | null
+          status?: string
+          style?: string
+          translation_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lineblock_translations_lineblock_id_fkey"
+            columns: ["lineblock_id"]
+            isOneToOne: false
+            referencedRelation: "line_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practice_attempts: {
         Row: {
           character_name: string
@@ -285,15 +332,96 @@ export type Database = {
           },
         ]
       }
+      translation_jobs: {
+        Row: {
+          completed_lines: number
+          created_at: string
+          error: string | null
+          id: string
+          scene_id: string
+          section_id: string | null
+          status: string
+          style: string
+          total_lines: number
+          updated_at: string
+        }
+        Insert: {
+          completed_lines?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          scene_id: string
+          section_id?: string | null
+          status?: string
+          style?: string
+          total_lines?: number
+          updated_at?: string
+        }
+        Update: {
+          completed_lines?: number
+          created_at?: string
+          error?: string | null
+          id?: string
+          scene_id?: string
+          section_id?: string | null
+          status?: string
+          style?: string
+          total_lines?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "translation_jobs_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "translation_jobs_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "script_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -420,6 +548,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
   },
 } as const
