@@ -208,34 +208,45 @@ const AdminTranslations = () => {
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-translations-bulk`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            scene_id: selectedSceneId,
-            section_id: selectedSectionId,
-            style: 'plain_english',
-          }),
+      let hasMore = true;
+      let totalProcessed = 0;
+      let totalErrors = 0;
+
+      // Keep calling the function until all translations are done
+      while (hasMore) {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-translations-bulk`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              scene_id: selectedSceneId,
+              section_id: selectedSectionId,
+              style: 'plain_english',
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to generate translations');
         }
-      );
 
-      const result = await response.json();
+        totalProcessed += result.processed || 0;
+        totalErrors += result.errors || 0;
+        hasMore = result.has_more === true;
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to generate translations');
+        // Refresh stats after each batch to show progress
+        setRefreshKey(prev => prev + 1);
       }
 
       toast.success(
-        `Generated ${result.processed} translations. ${result.already_complete} were already complete.`
+        `Generated ${totalProcessed} translations${totalErrors > 0 ? ` (${totalErrors} errors)` : ''}.`
       );
-
-      // Refresh stats
-      setRefreshKey(prev => prev + 1);
     } catch (error: any) {
       console.error('Error generating translations:', error);
       toast.error(error.message || 'Failed to generate translations');
