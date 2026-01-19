@@ -36,11 +36,12 @@ interface Character {
 
 // Available translation styles
 const TRANSLATION_STYLES = [
+  { value: "plain_english_chatgpt_v1", label: "Modern English (ChatGPT)" },
   { value: "plain_english", label: "Modern English (GPT-4o-mini)" },
   { value: "plain_english_gpt52_v1", label: "Modern English (GPT-5.2)" },
 ] as const;
 
-const DEFAULT_STYLE = "plain_english";
+const DEFAULT_STYLE = "plain_english_chatgpt_v1";
 
 // localStorage keys for persisting toggles
 const STORAGE_KEYS = {

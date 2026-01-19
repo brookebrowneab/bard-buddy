@@ -99,7 +99,7 @@ const ModernEnglishGame = () => {
         .from('lineblock_translations')
         .select('lineblock_id, translation_text, status')
         .in('lineblock_id', blockIds)
-        .eq('style', 'plain_english');
+        .eq('style', 'plain_english_chatgpt_v1');
 
       const translationMap = new Map(
         (translations || []).map(t => [t.lineblock_id, t])
