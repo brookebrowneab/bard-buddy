@@ -10,9 +10,9 @@ const PROMPT_VERSION = "gpt5_v1";
 const MODEL = "openai/gpt-5";
 const STYLE = "plain_english_gpt5";
 
-// Some reasoning-capable models may spend tokens "thinking" before producing output.
-// Give enough budget to reliably produce the final translation.
-const MAX_COMPLETION_TOKENS = 800;
+// GPT-5 uses reasoning tokens before producing output (seen ~800 reasoning tokens).
+// We need enough headroom for reasoning PLUS the actual translation output.
+const MAX_COMPLETION_TOKENS = 2000;
 
 // Keep batches smaller to reduce timeouts when using high-capability models.
 const MAX_LINES_PER_REQUEST = 5;
