@@ -22,6 +22,7 @@ import AdminTranslationsReview from "./pages/AdminTranslationsReview";
 import AdminTranslationEditor from "./pages/AdminTranslationEditor";
 import AdminScriptFix from "./pages/AdminScriptFix";
 import AdminLogin from "./pages/AdminLogin";
+import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => (
             <Route path="/modern-english" element={<ModernEnglishGame />} />
             <Route path="/modern-english-viewer" element={<ModernEnglishSceneViewer />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/translations" element={<AdminTranslations />} />
             <Route path="/admin/translations-review" element={<AdminTranslationsReview />} />
             <Route path="/admin/translation-editor" element={<AdminTranslationEditor />} />
