@@ -80,7 +80,13 @@ const ModernEnglishSceneViewer = () => {
     if (savedMode) setVisibleMode(savedMode);
     if (savedSection) setSelectedSectionId(savedSection);
     if (savedCharacter) setSelectedCharacter(savedCharacter);
-    if (savedStyle) setSelectedStyle(savedStyle);
+    // Only use saved style if it exists in available options
+    if (savedStyle && TRANSLATION_STYLES.some(s => s.value === savedStyle)) {
+      setSelectedStyle(savedStyle);
+    } else {
+      // Clear invalid cached style and use default
+      localStorage.setItem(STORAGE_KEYS.TRANSLATION_STYLE, DEFAULT_STYLE);
+    }
   }, []);
 
   // Set character from context
