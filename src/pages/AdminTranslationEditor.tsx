@@ -95,6 +95,17 @@ const AdminTranslationEditor = () => {
     checkAdmin();
   }, [navigate]);
 
+  // Keep sessionRef up to date (important for token refresh)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      sessionRef.current = session;
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // Fetch sections
   useEffect(() => {
     const fetchSections = async () => {
@@ -161,9 +172,27 @@ const AdminTranslationEditor = () => {
     }
   }, [selectedSectionId, selectedStyle, fetchLineBlocks]);
 
+  const getValidAccessToken = useCallback(async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (!session) throw new Error("Not authenticated");
+
+    const expiresAtMs = (session.expires_at ?? 0) * 1000;
+    if (expiresAtMs && expiresAtMs < Date.now() + 30_000) {
+      const { data, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !data.session) {
+        throw refreshError ?? new Error("Session expired");
+      }
+      sessionRef.current = data.session;
+      return data.session.access_token;
+    }
+
+    sessionRef.current = session;
+    return session.access_token;
+  }, []);
+
   // Auto-save function
   const saveTranslation = useCallback(async (lineblockId: string, text: string) => {
-    if (!sessionRef.current) return;
     
     setSaving(prev => new Set(prev).add(lineblockId));
     setSaveStatus(prev => {
@@ -173,13 +202,15 @@ const AdminTranslationEditor = () => {
     });
 
     try {
+      const token = await getValidAccessToken();
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-save-translation`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sessionRef.current.access_token}`,
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({
             lineblock_id: lineblockId,
@@ -231,8 +262,17 @@ const AdminTranslationEditor = () => {
         });
       }, 2000);
       
-    } catch (error) {
+    } catch (error: any) {
       setSaveStatus(prev => new Map(prev).set(lineblockId, 'error'));
+
+      const message = error?.message || "Failed to save translation";
+      if (message === "Not authenticated" || message === "Session expired") {
+        toast.error("Your session expired. Please sign in again.");
+        await supabase.auth.signOut();
+        navigate('/admin/login');
+        return;
+      }
+
       toast.error('Failed to save translation');
     } finally {
       setSaving(prev => {
@@ -241,7 +281,7 @@ const AdminTranslationEditor = () => {
         return next;
       });
     }
-  }, [selectedStyle]);
+  }, [getValidAccessToken, navigate, selectedStyle]);
 
   // Handle text change with auto-save
   const handleTextChange = useCallback((lineblockId: string, text: string) => {
@@ -278,18 +318,18 @@ const AdminTranslationEditor = () => {
 
   // Regenerate translation
   const handleRegenerate = useCallback(async (lineblockId: string) => {
-    if (!sessionRef.current) return;
-    
     setSaving(prev => new Set(prev).add(lineblockId));
-    
+
     try {
+      const token = await getValidAccessToken();
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-lineblock-translation`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sessionRef.current.access_token}`,
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({
             lineblock_id: lineblockId,
@@ -303,7 +343,7 @@ const AdminTranslationEditor = () => {
       if (!response.ok) throw new Error(result.error);
 
       toast.success("Translation regenerated");
-      
+
       // Refetch just this block's translation
       const { data: newTrans } = await supabase
         .from('lineblock_translations')
@@ -311,10 +351,10 @@ const AdminTranslationEditor = () => {
         .eq('lineblock_id', lineblockId)
         .eq('style', selectedStyle)
         .maybeSingle();
-      
+
       if (newTrans) {
-        setLineBlocks(prev => prev.map(lb => 
-          lb.id === lineblockId 
+        setLineBlocks(prev => prev.map(lb =>
+          lb.id === lineblockId
             ? { ...lb, translation: newTrans }
             : lb
         ));
@@ -326,7 +366,15 @@ const AdminTranslationEditor = () => {
         });
       }
     } catch (error: any) {
-      toast.error(error.message || "Failed to regenerate");
+      const message = error?.message || "Failed to regenerate";
+      if (message === "Not authenticated" || message === "Session expired") {
+        toast.error("Your session expired. Please sign in again.");
+        await supabase.auth.signOut();
+        navigate('/admin/login');
+        return;
+      }
+
+      toast.error(message);
     } finally {
       setSaving(prev => {
         const next = new Set(prev);
@@ -334,7 +382,7 @@ const AdminTranslationEditor = () => {
         return next;
       });
     }
-  }, [selectedStyle]);
+  }, [getValidAccessToken, navigate, selectedStyle]);
 
   // Cleanup timers on unmount
   useEffect(() => {
