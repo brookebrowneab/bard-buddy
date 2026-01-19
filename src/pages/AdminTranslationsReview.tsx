@@ -284,27 +284,38 @@ const AdminTranslationsReview = () => {
       return;
     }
 
-    // Fetch translations
+    // Fetch translations in batches to avoid URL length limits
     const blockIds = blocks.map(b => b.id);
-    const { data: translations } = await supabase
-      .from('lineblock_translations')
-      .select('id, lineblock_id, translation_text, status, review_status, source, error, style')
-      .in('lineblock_id', blockIds)
-      .eq('style', selectedStyle);
+    const BATCH_SIZE = 50;
+    const allTranslations: any[] = [];
+    const allIssues: any[] = [];
 
-    // Fetch script issues
-    const { data: issues } = await supabase
-      .from('script_issues')
-      .select('id, lineblock_id, issue_type, status, note')
-      .in('lineblock_id', blockIds)
-      .eq('status', 'open');
+    for (let i = 0; i < blockIds.length; i += BATCH_SIZE) {
+      const batchIds = blockIds.slice(i, i + BATCH_SIZE);
+      
+      const [translationsRes, issuesRes] = await Promise.all([
+        supabase
+          .from('lineblock_translations')
+          .select('id, lineblock_id, translation_text, status, review_status, source, error, style')
+          .in('lineblock_id', batchIds)
+          .eq('style', selectedStyle),
+        supabase
+          .from('script_issues')
+          .select('id, lineblock_id, issue_type, status, note')
+          .in('lineblock_id', batchIds)
+          .eq('status', 'open')
+      ]);
+
+      if (translationsRes.data) allTranslations.push(...translationsRes.data);
+      if (issuesRes.data) allIssues.push(...issuesRes.data);
+    }
 
     const translationMap = new Map(
-      (translations || []).map(t => [t.lineblock_id, t])
+      allTranslations.map((t: any) => [t.lineblock_id, t])
     );
 
     const issuesMap = new Map<string, ScriptIssue[]>();
-    (issues || []).forEach(issue => {
+    allIssues.forEach((issue: any) => {
       const existing = issuesMap.get(issue.lineblock_id) || [];
       existing.push(issue);
       issuesMap.set(issue.lineblock_id, existing);
