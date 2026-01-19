@@ -28,6 +28,14 @@ Rules:
 - Preserve the emotional tone and meaning
 - Do not add explanations or context`;
 
+// Models that don't support temperature/top_p sampling params (only default=1)
+const MODELS_NO_SAMPLING_PARAMS = ['openai/gpt-5', 'openai/gpt-5-mini', 'openai/gpt-5.2'];
+
+// Check if model supports custom sampling parameters
+function supportsTemperature(model: string): boolean {
+  return !MODELS_NO_SAMPLING_PARAMS.some(m => model.toLowerCase().includes(m.toLowerCase()));
+}
+
 // Interface for per-block diagnostics
 interface BlockDiagnostic {
   lineblock_id: string;
@@ -37,6 +45,7 @@ interface BlockDiagnostic {
   model: string;
   success: boolean;
   skipped_too_long?: boolean;
+  retried_without_sampling?: boolean;
   error?: {
     http_status?: number;
     type?: string;
@@ -264,25 +273,65 @@ serve(async (req) => {
             onConflict: 'lineblock_id,style',
           });
 
-        console.log(`[START] Block ${block.id}: text=${textCharLen}chars, prompt=${promptCharLen}chars, max_tokens=${MAX_OUTPUT_TOKENS}`);
+        console.log(`[START] Block ${block.id}: text=${textCharLen}chars, prompt=${promptCharLen}chars, max_tokens=${MAX_OUTPUT_TOKENS}, model=${MODEL}`);
 
-        // Call Lovable AI Gateway with lower temperature and output limit
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${lovableApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        // Build request payload - conditionally include temperature
+        const buildPayload = (includeSamplingParams: boolean) => {
+          const payload: any = {
             model: MODEL,
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: userPrompt },
             ],
             max_completion_tokens: MAX_OUTPUT_TOKENS,
-            temperature: 0.2,
-          }),
-        });
+          };
+          
+          // Only add temperature for models that support it
+          if (includeSamplingParams && supportsTemperature(MODEL)) {
+            payload.temperature = 0.2;
+          }
+          
+          return payload;
+        };
+
+        // Helper to make the AI call
+        const callAI = async (payload: any) => {
+          return await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${lovableApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          });
+        };
+
+        // First attempt - include sampling params only if model supports them
+        let aiResponse = await callAI(buildPayload(true));
+        let retriedWithoutSampling = false;
+
+        // Check if we got an unsupported_value error for sampling params
+        if (!aiResponse.ok && aiResponse.status === 400) {
+          const errorBody = await aiResponse.text();
+          const lowerError = errorBody.toLowerCase();
+          
+          // Check for unsupported temperature/top_p/sampling errors
+          if (lowerError.includes('unsupported') && 
+              (lowerError.includes('temperature') || lowerError.includes('top_p') || lowerError.includes('sampling'))) {
+            console.log(`[RETRY] Block ${block.id}: retrying without sampling params due to unsupported_value error`);
+            
+            // Retry without any sampling parameters
+            aiResponse = await callAI(buildPayload(false));
+            retriedWithoutSampling = true;
+          } else {
+            // Re-parse for normal error handling below
+            // We need to create a fake response with the error body
+            aiResponse = new Response(errorBody, { 
+              status: 400, 
+              headers: aiResponse.headers 
+            });
+          }
+        }
 
         if (!aiResponse.ok) {
           const errorBody = await aiResponse.text();
@@ -305,6 +354,7 @@ serve(async (req) => {
           const diag: BlockDiagnostic = {
             ...baseDiag,
             success: false,
+            retried_without_sampling: retriedWithoutSampling,
             error: {
               http_status: httpStatus,
               type: errorType,
@@ -357,6 +407,7 @@ serve(async (req) => {
           const diag: BlockDiagnostic = {
             ...baseDiag,
             success: false,
+            retried_without_sampling: retriedWithoutSampling,
             error: {
               type: refusal ? 'refusal' : 'empty_response',
               code: finishReason,
@@ -389,8 +440,12 @@ serve(async (req) => {
           .eq('lineblock_id', block.id)
           .eq('style', STYLE);
 
-        const successDiag: BlockDiagnostic = { ...baseDiag, success: true };
-        console.log(`[SUCCESS] Block ${block.id}: translated ${textCharLen} chars`);
+        const successDiag: BlockDiagnostic = { 
+          ...baseDiag, 
+          success: true,
+          retried_without_sampling: retriedWithoutSampling,
+        };
+        console.log(`[SUCCESS] Block ${block.id}: translated ${textCharLen} chars${retriedWithoutSampling ? ' (retried without sampling params)' : ''}`);
         return successDiag;
 
       } catch (error) {

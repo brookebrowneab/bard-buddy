@@ -63,6 +63,7 @@ const AdminTranslations = () => {
     model: string;
     success: boolean;
     skipped_too_long?: boolean;
+    retried_without_sampling?: boolean;
     error?: {
       http_status?: number;
       type?: string;
@@ -832,12 +833,17 @@ const AdminTranslations = () => {
                       </summary>
                       <div className="mt-2 divide-y border rounded-md max-h-40 overflow-auto">
                         {gpt5Diagnostics.blockDiagnostics.filter(b => b.success).map((block, i) => (
-                          <div key={i} className="px-3 py-1 flex items-center gap-2">
+                          <div key={i} className="px-3 py-1 flex items-center gap-2 flex-wrap">
                             <CheckCircle className="w-3 h-3 text-green-600" />
                             <code className="bg-muted px-1 rounded text-[10px]">{block.lineblock_id.slice(0, 8)}...</code>
                             <span className="text-muted-foreground">
                               {block.text_char_len} chars → {block.model}
                             </span>
+                            {block.retried_without_sampling && (
+                              <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-600">
+                                retried w/o sampling
+                              </Badge>
+                            )}
                           </div>
                         ))}
                       </div>
