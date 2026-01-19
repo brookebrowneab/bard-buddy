@@ -74,7 +74,12 @@ interface DataHealthStats {
   translations_count: number;
 }
 
-const STYLE = "plain_english";
+const STYLES = [
+  { value: "plain_english", label: "Plain English" },
+  { value: "plain_english_chatgpt_v1", label: "Modern English (ChatGPT)" },
+  { value: "plain_english_gpt5", label: "Modern English (GPT-5)" },
+  { value: "kid_modern_english_v1", label: "Kid Modern English" },
+];
 
 const ISSUE_TYPES = [
   { value: 'wrong_speaker', label: 'Wrong Speaker' },
@@ -100,6 +105,7 @@ const AdminTranslationsReview = () => {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [showSuspicious, setShowSuspicious] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [selectedStyle, setSelectedStyle] = useState("plain_english_chatgpt_v1");
   
   const [lineBlocks, setLineBlocks] = useState<LineBlockWithTranslation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,7 +186,7 @@ const AdminTranslationsReview = () => {
       const { count: transCount } = await supabase
         .from('lineblock_translations')
         .select('id', { count: 'exact', head: true })
-        .eq('style', STYLE)
+        .eq('style', selectedStyle)
         .eq('status', 'complete')
         .in('lineblock_id', blockIds.length > 0 ? blockIds : ['none']);
 
@@ -284,7 +290,7 @@ const AdminTranslationsReview = () => {
       .from('lineblock_translations')
       .select('id, lineblock_id, translation_text, status, review_status, source, error, style')
       .in('lineblock_id', blockIds)
-      .eq('style', STYLE);
+      .eq('style', selectedStyle);
 
     // Fetch script issues
     const { data: issues } = await supabase
@@ -355,7 +361,7 @@ const AdminTranslationsReview = () => {
 
   useEffect(() => {
     fetchLineBlocks();
-  }, [selectedSceneId, selectedSectionId, selectedCharacter, statusFilter, reviewFilter, sourceFilter, showSuspicious, sections]);
+  }, [selectedSceneId, selectedSectionId, selectedCharacter, statusFilter, reviewFilter, sourceFilter, showSuspicious, sections, selectedStyle]);
 
   const openDetail = (line: LineBlockWithTranslation) => {
     setSelectedLine(line);
@@ -380,7 +386,7 @@ const AdminTranslationsReview = () => {
           },
           body: JSON.stringify({
             lineblock_id: selectedLine.id,
-            style: STYLE,
+            style: selectedStyle,
             translation_text: editText,
             review_status: reviewStatus || selectedLine.translation?.review_status || "needs_review",
             source: source || (selectedLine.translation?.source === 'ai' ? 'ai_edited' : selectedLine.translation?.source || 'manual'),
@@ -419,7 +425,7 @@ const AdminTranslationsReview = () => {
           },
           body: JSON.stringify({
             lineblock_id: selectedLine.id,
-            style: STYLE,
+            style: selectedStyle,
             force,
           }),
         }
@@ -447,7 +453,7 @@ const AdminTranslationsReview = () => {
         .from('lineblock_translations')
         .upsert({
           lineblock_id: selectedLine.id,
-          style: STYLE,
+          style: selectedStyle,
           status: 'failed',
           error: 'Manually marked as failed',
           source: 'manual',
@@ -518,7 +524,7 @@ const AdminTranslationsReview = () => {
             body: JSON.stringify({
               scene_id: selectedSceneId,
               section_id: selectedSectionId,
-              style: STYLE,
+              style: selectedStyle,
             }),
           }
         );
@@ -616,7 +622,7 @@ const AdminTranslationsReview = () => {
     try {
       const updates = toApprove.map(lb => ({
         lineblock_id: lb.id,
-        style: STYLE,
+        style: selectedStyle,
         review_status: 'approved',
         translation_text: lb.translation!.translation_text,
         status: 'complete',
@@ -651,7 +657,7 @@ const AdminTranslationsReview = () => {
     try {
       const updates = toMark.map(lb => ({
         lineblock_id: lb.id,
-        style: STYLE,
+        style: selectedStyle,
         review_status: 'needs_review',
         translation_text: lb.translation!.translation_text,
         status: 'complete',
@@ -783,7 +789,7 @@ const AdminTranslationsReview = () => {
                     <span className="ml-2 font-medium text-orange-600">{healthStats.non_canonical_count}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Translations ({STYLE}):</span>
+                    <span className="text-muted-foreground">Translations ({selectedStyle}):</span>
                     <span className="ml-2 font-medium text-green-600">{healthStats.translations_count}</span>
                   </div>
                 </div>
@@ -812,7 +818,16 @@ const AdminTranslationsReview = () => {
       {/* Filters */}
       <div className="border-b border-border bg-muted/30 p-4">
         <div className="max-w-7xl mx-auto space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+            <Select value={selectedStyle} onValueChange={setSelectedStyle}>
+              <SelectTrigger><SelectValue placeholder="Style" /></SelectTrigger>
+              <SelectContent>
+                {STYLES.map(s => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Select value={selectedSceneId || undefined} onValueChange={setSelectedSceneId}>
               <SelectTrigger><SelectValue placeholder="Scene" /></SelectTrigger>
               <SelectContent>
