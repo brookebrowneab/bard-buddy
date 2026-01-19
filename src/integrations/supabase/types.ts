@@ -506,7 +506,41 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      lineblock_translations_public: {
+        Row: {
+          id: string | null
+          lineblock_id: string | null
+          review_status: string | null
+          status: string | null
+          style: string | null
+          translation_text: string | null
+        }
+        Insert: {
+          id?: string | null
+          lineblock_id?: string | null
+          review_status?: string | null
+          status?: string | null
+          style?: string | null
+          translation_text?: string | null
+        }
+        Update: {
+          id?: string | null
+          lineblock_id?: string | null
+          review_status?: string | null
+          status?: string | null
+          style?: string | null
+          translation_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lineblock_translations_lineblock_id_fkey"
+            columns: ["lineblock_id"]
+            isOneToOne: false
+            referencedRelation: "line_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_role: {
