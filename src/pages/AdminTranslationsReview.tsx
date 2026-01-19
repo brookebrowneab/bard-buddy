@@ -635,6 +635,16 @@ const AdminTranslationsReview = () => {
       return;
     }
 
+    const toApproveIds = new Set(toApprove.map(lb => lb.id));
+
+    // Optimistic update
+    setLineBlocks(prev => prev.map(lb => 
+      toApproveIds.has(lb.id) && lb.translation 
+        ? { ...lb, translation: { ...lb.translation, review_status: 'approved' } }
+        : lb
+    ));
+    setSelectedRows(new Set());
+
     setBulkActioning(true);
     try {
       const updates = toApprove.map(lb => ({
@@ -646,14 +656,20 @@ const AdminTranslationsReview = () => {
         source: lb.translation!.source,
       }));
 
-      await supabase
+      const { error } = await supabase
         .from('lineblock_translations')
         .upsert(updates, { onConflict: 'lineblock_id,style' });
 
+      if (error) throw error;
       toast.success(`Approved ${toApprove.length} selected translations`);
-      setSelectedRows(new Set());
-      fetchLineBlocks();
     } catch (error: any) {
+      // Revert on error
+      setLineBlocks(prev => prev.map(lb => {
+        const original = toApprove.find(o => o.id === lb.id);
+        return original && lb.translation 
+          ? { ...lb, translation: { ...lb.translation, review_status: original.translation!.review_status } }
+          : lb;
+      }));
       toast.error(error.message || 'Failed to bulk approve');
     } finally {
       setBulkActioning(false);
@@ -672,6 +688,16 @@ const AdminTranslationsReview = () => {
       return;
     }
 
+    const toMarkIds = new Set(toMark.map(lb => lb.id));
+
+    // Optimistic update
+    setLineBlocks(prev => prev.map(lb => 
+      toMarkIds.has(lb.id) && lb.translation 
+        ? { ...lb, translation: { ...lb.translation, review_status: 'needs_review' } }
+        : lb
+    ));
+    setSelectedRows(new Set());
+
     setBulkActioning(true);
     try {
       const updates = toMark.map(lb => ({
@@ -683,33 +709,52 @@ const AdminTranslationsReview = () => {
         source: lb.translation!.source,
       }));
 
-      await supabase
+      const { error } = await supabase
         .from('lineblock_translations')
         .upsert(updates, { onConflict: 'lineblock_id,style' });
 
+      if (error) throw error;
       toast.success(`Marked ${toMark.length} as needs review`);
-      setSelectedRows(new Set());
-      fetchLineBlocks();
     } catch (error: any) {
+      // Revert on error
+      setLineBlocks(prev => prev.map(lb => {
+        const original = toMark.find(o => o.id === lb.id);
+        return original && lb.translation 
+          ? { ...lb, translation: { ...lb.translation, review_status: original.translation!.review_status } }
+          : lb;
+      }));
       toast.error(error.message || 'Failed to bulk mark');
     } finally {
       setBulkActioning(false);
     }
   };
 
-  // Inline review status update
+  // Inline review status update - optimistic update
   const handleInlineReviewChange = async (line: LineBlockWithTranslation, newStatus: string) => {
     if (!line.translation) return;
     
+    // Optimistic update
+    setLineBlocks(prev => prev.map(lb => 
+      lb.id === line.id && lb.translation 
+        ? { ...lb, translation: { ...lb.translation, review_status: newStatus } }
+        : lb
+    ));
+    
     try {
-      await supabase
+      const { error } = await supabase
         .from('lineblock_translations')
         .update({ review_status: newStatus })
         .eq('id', line.translation.id);
 
+      if (error) throw error;
       toast.success(`Updated to ${newStatus === 'approved' ? 'Approved' : 'Needs Review'}`);
-      fetchLineBlocks();
     } catch (error: any) {
+      // Revert on error
+      setLineBlocks(prev => prev.map(lb => 
+        lb.id === line.id && lb.translation 
+          ? { ...lb, translation: { ...lb.translation, review_status: line.translation!.review_status } }
+          : lb
+      ));
       toast.error(error.message || 'Failed to update');
     }
   };
