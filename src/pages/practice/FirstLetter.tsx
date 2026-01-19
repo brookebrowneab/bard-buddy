@@ -94,10 +94,10 @@ const FirstLetter = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <PracticeHeader title="First-Letter Help" />
 
-      <main className="flex-1 flex flex-col px-6 py-6 overflow-y-auto">
+      <main className="flex-1 flex flex-col px-4 md:px-6 py-6 overflow-y-auto overflow-x-hidden">
         <div className="max-w-lg mx-auto w-full flex-1 flex flex-col">
           {/* Cue Line */}
           <div className="mb-6">
@@ -118,8 +118,8 @@ const FirstLetter = () => {
           </p>
 
           {/* First Letter Display */}
-          <div className="flex-1 p-5 bg-card rounded-lg border border-border mb-4">
-            <p className="font-serif text-xl leading-loose">
+          <div className="flex-1 p-4 md:p-5 bg-card rounded-lg border border-border mb-4">
+            <p className="font-serif text-lg md:text-xl leading-loose break-words">
               {words.map((word, index) => {
                 const isRevealed = revealedWords.includes(index) || showAll;
                 return (
@@ -127,7 +127,7 @@ const FirstLetter = () => {
                     <button
                       onClick={() => toggleWordReveal(index)}
                       className={`
-                        inline-block px-1 py-0.5 rounded transition-all duration-200
+                        inline-block px-0.5 md:px-1 py-0.5 rounded transition-all duration-200 break-all
                         ${isRevealed 
                           ? "text-primary font-medium" 
                           : "text-foreground hover:bg-primary/10"

@@ -119,10 +119,10 @@ const Scramble = () => {
   const allPlaced = selectedOrder.length === chunks.length;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <PracticeHeader title="Scramble the Line" />
 
-      <main className="flex-1 flex flex-col px-6 py-6 overflow-y-auto">
+      <main className="flex-1 flex flex-col px-4 md:px-6 py-6 overflow-y-auto overflow-x-hidden">
         <div className="max-w-lg mx-auto w-full flex-1 flex flex-col">
           {/* Cue Line */}
           <div className="mb-6">
@@ -168,7 +168,7 @@ const Scramble = () => {
                       onClick={() => handleChunkDeselect(position)}
                       disabled={isCorrect !== null}
                       className={`
-                        px-3 py-2 rounded-md font-serif text-sm transition-all
+                        px-2 md:px-3 py-2 rounded-md font-serif text-xs md:text-sm transition-all break-words max-w-full
                         ${isCorrect !== null 
                           ? "bg-card border border-border cursor-default" 
                           : "bg-primary/10 border border-primary/30 hover:bg-primary/20 cursor-pointer"
@@ -195,7 +195,7 @@ const Scramble = () => {
                   <button
                     key={`available-${chunkIndex}`}
                     onClick={() => handleChunkSelect(chunkIndex)}
-                    className="px-4 py-3 rounded-lg bg-card border border-border hover:border-primary hover:bg-primary/5 font-serif text-base transition-all shadow-sm"
+                    className="px-3 md:px-4 py-2 md:py-3 rounded-lg bg-card border border-border hover:border-primary hover:bg-primary/5 font-serif text-sm md:text-base transition-all shadow-sm break-words max-w-full"
                   >
                     {chunks[chunkIndex]}
                   </button>

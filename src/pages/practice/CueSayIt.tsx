@@ -64,10 +64,10 @@ const CueSayIt = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <PracticeHeader title="Cue → Say It" />
 
-      <main className="flex-1 flex flex-col px-6 py-6 overflow-y-auto">
+      <main className="flex-1 flex flex-col px-4 md:px-6 py-6 overflow-y-auto overflow-x-hidden">
         <div className="max-w-lg mx-auto w-full flex-1 flex flex-col">
           {/* Cue Line */}
           <div className="mb-6">
@@ -75,8 +75,8 @@ const CueSayIt = () => {
               <Quote className="w-4 h-4" />
               <span className="text-sm uppercase tracking-wide">Your Cue</span>
             </div>
-            <div className="p-5 bg-muted/50 rounded-lg border border-border">
-              <p className="font-serif text-lg text-foreground italic leading-relaxed">
+            <div className="p-4 md:p-5 bg-muted/50 rounded-lg border border-border">
+              <p className="font-serif text-base md:text-lg text-foreground italic leading-relaxed break-words">
                 "{line.cue_line}"
               </p>
             </div>
@@ -105,13 +105,13 @@ const CueSayIt = () => {
                 Reveal Your Line
               </Button>
             ) : (
-              <div className="p-5 bg-card rounded-lg border-2 border-primary shadow-md animate-in fade-in duration-300">
+              <div className="p-4 md:p-5 bg-card rounded-lg border-2 border-primary shadow-md animate-in fade-in duration-300">
                 <div className="flex items-center gap-2 text-primary mb-3">
-                  <span className="text-sm font-semibold uppercase tracking-wide">
+                  <span className="text-xs md:text-sm font-semibold uppercase tracking-wide break-words">
                     {selectedRole}'s Line
                   </span>
                 </div>
-                <p className="font-serif text-xl text-foreground leading-relaxed">
+                <p className="font-serif text-lg md:text-xl text-foreground leading-relaxed break-words">
                   "{line.shakespeare_line}"
                 </p>
               </div>
