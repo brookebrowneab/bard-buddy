@@ -39,7 +39,7 @@ const practiceModes: PracticeModeOption[] = [
     title: "Plain English → Shakespeare",
     description: "Read the modern meaning, then recall the Bard's words",
     icon: <Languages className="w-6 h-6" />,
-    path: "/practice/plain-english",
+    path: "/modern-english-viewer",
     requiresHint: true
   }
 ];
