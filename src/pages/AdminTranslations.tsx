@@ -6,10 +6,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles, RotateCcw, Upload } from "lucide-react";
+import { Loader2, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles, RotateCcw, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
+import AppBreadcrumbs from "@/components/AppBreadcrumbs";
 
 interface Scene {
   id: string;
@@ -550,19 +551,15 @@ const AdminTranslations = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/admin')}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-foreground flex items-center gap-2">
-              <Languages className="w-5 h-5 text-primary" />
-              Admin: Translations
-            </h1>
+        <div className="px-4 py-3">
+          <AppBreadcrumbs className="mb-2" />
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <h1 className="font-semibold text-foreground flex items-center gap-2">
+                <Languages className="w-5 h-5 text-primary" />
+                Admin: Translations
+              </h1>
+            </div>
           </div>
         </div>
       </header>

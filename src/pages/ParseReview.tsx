@@ -6,7 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useSceneData } from '@/hooks/useSceneData';
-import { ArrowLeft, Save, RefreshCw, Loader2, Check, ChevronDown, ChevronUp, Trash2, ArrowRightLeft } from 'lucide-react';
+import { Save, RefreshCw, Loader2, Check, ChevronDown, ChevronUp, Trash2, ArrowRightLeft } from 'lucide-react';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 import type { LineBlock } from '@/types/scene';
 
 const ParseReview = () => {
@@ -159,15 +160,7 @@ const ParseReview = () => {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="px-4 pt-6 pb-4 sticky top-0 bg-background z-10 border-b border-border">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate('/admin')}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Admin
-        </Button>
+        <AppBreadcrumbs className="mb-4" />
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
           Review Parse
         </h1>

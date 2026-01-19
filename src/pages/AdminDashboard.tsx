@@ -11,10 +11,10 @@ import {
   Loader2,
   Scissors,
   CheckCircle,
-  ArrowLeft
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import AppBreadcrumbs from "@/components/AppBreadcrumbs";
 
 interface AdminLink {
   title: string;
@@ -108,22 +108,20 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
+        <div className="mb-8">
+          <AppBreadcrumbs className="mb-4" />
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold">Admin Dashboard</h1>
               {userEmail && (
                 <p className="text-muted-foreground text-sm">Logged in as {userEmail}</p>
               )}
             </div>
+            <Button variant="outline" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
         </div>
 
         {/* Admin Links Grid */}

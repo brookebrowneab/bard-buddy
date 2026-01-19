@@ -7,7 +7,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useSceneData } from '@/hooks/useSceneData';
 import { extractTextFromPdf } from '@/lib/pdfParser';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Upload, FileText, Loader2, Users, MessageSquare, Layers } from 'lucide-react';
+import { Upload, FileText, Loader2, Users, MessageSquare, Layers } from 'lucide-react';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 import type { ParseResult } from '@/types/scene';
 
 const UploadScene = () => {
@@ -174,15 +175,7 @@ const UploadScene = () => {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="px-4 pt-6 pb-4">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate('/admin')}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Admin
-        </Button>
+        <AppBreadcrumbs className="mb-4" />
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
           Upload Script (Admin)
         </h1>
