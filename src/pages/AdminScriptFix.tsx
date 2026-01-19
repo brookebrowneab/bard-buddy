@@ -58,6 +58,7 @@ const AdminScriptFix = () => {
   const [showSplitDialog, setShowSplitDialog] = useState(false);
   const [splitPosition, setSplitPosition] = useState(0);
   const [splitting, setSplitting] = useState(false);
+  const [newBlockSpeaker, setNewBlockSpeaker] = useState("");
   
   // Merge dialog state
   const [showMergeDialog, setShowMergeDialog] = useState(false);
@@ -210,13 +211,14 @@ const AdminScriptFix = () => {
         .update({ text_raw: textBefore })
         .eq('id', selectedBlock.id);
 
-      // Create new block with second part
+      // Create new block with second part (use new speaker if specified)
+      const newSpeaker = newBlockSpeaker.trim() || selectedBlock.speaker_name;
       const { data: newBlock } = await supabase
         .from('line_blocks')
         .insert({
           scene_id: selectedBlock.scene_id,
           section_id: selectedBlock.section_id,
-          speaker_name: selectedBlock.speaker_name,
+          speaker_name: newSpeaker,
           text_raw: textAfter,
           order_index: selectedBlock.order_index + 1,
         })
@@ -266,6 +268,7 @@ const AdminScriptFix = () => {
       toast.success('Block split successfully');
       setShowSplitDialog(false);
       setSelectedBlock(null);
+      setNewBlockSpeaker("");
       fetchLineBlocks();
     } catch (error: any) {
       toast.error(error.message || 'Failed to split');
@@ -570,7 +573,11 @@ const AdminScriptFix = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setShowSplitDialog(true)}
+                onClick={() => {
+                  setShowSplitDialog(true);
+                  setNewBlockSpeaker("");
+                  setSplitPosition(Math.floor(selectedBlock.text_raw.length / 2));
+                }}
               >
                 <Scissors className="w-4 h-4 mr-1" />
                 Split
@@ -623,15 +630,26 @@ const AdminScriptFix = () => {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs text-muted-foreground">First part (keeps speaker)</Label>
+                  <Label className="text-xs text-muted-foreground">First part (keeps speaker: {selectedBlock.speaker_name})</Label>
                   <div className="p-3 bg-muted rounded-lg font-serif text-sm mt-1 min-h-24">
                     {selectedBlock.text_raw.slice(0, splitPosition)}
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Second part (new block)</Label>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Label className="text-xs text-muted-foreground">Second part - Speaker:</Label>
+                    <Input 
+                      value={newBlockSpeaker}
+                      onChange={(e) => setNewBlockSpeaker(e.target.value)}
+                      placeholder={selectedBlock.speaker_name}
+                      className="h-7 text-xs w-40"
+                    />
+                  </div>
                   <div className="p-3 bg-muted rounded-lg font-serif text-sm mt-1 min-h-24">
-                    {selectedBlock.text_raw.slice(splitPosition)}
+                    <Badge variant="secondary" className="mb-2 text-xs">
+                      {newBlockSpeaker.trim() || selectedBlock.speaker_name}
+                    </Badge>
+                    <p>{selectedBlock.text_raw.slice(splitPosition)}</p>
                   </div>
                 </div>
               </div>
