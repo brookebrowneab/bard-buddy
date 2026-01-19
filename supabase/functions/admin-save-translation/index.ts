@@ -23,13 +23,13 @@ serve(async (req) => {
       );
     }
 
-    // Create client with user's token to verify auth
-    const supabaseUser = createClient(supabaseUrl, supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Extract the JWT token and verify it
+    const token = authHeader.replace("Bearer ", "");
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) {
+      console.error("Auth error:", authError);
       return new Response(
         JSON.stringify({ error: "Invalid authentication" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -37,7 +37,6 @@ serve(async (req) => {
     }
 
     // Check admin role
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     const { data: roleData, error: roleError } = await supabaseAdmin
       .from("user_roles")
       .select("role")
