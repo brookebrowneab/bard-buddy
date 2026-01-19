@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
 import { Loader2, ChevronLeft, Save, CheckCircle, AlertCircle, RefreshCw, Scissors, Combine, ChevronUp, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -944,35 +945,50 @@ const AdminTranslationEditor = () => {
           
           {selectedBlock && (
             <div className="space-y-4">
+              {/* Visual text with split indicator */}
               <div>
-                <Label>Original Text</Label>
-                <div className="p-3 border rounded bg-muted text-sm font-serif whitespace-pre-wrap">
-                  {selectedBlock.text_raw}
+                <Label className="mb-2 block">Click or drag to set split point</Label>
+                <div className="p-3 border rounded bg-muted text-sm font-serif whitespace-pre-wrap select-none">
+                  <span className="text-primary font-medium">
+                    {selectedBlock.text_raw.slice(0, splitPosition)}
+                  </span>
+                  <span className="inline-block w-0.5 h-5 bg-destructive mx-0.5 animate-pulse align-middle" />
+                  <span className="text-muted-foreground">
+                    {selectedBlock.text_raw.slice(splitPosition)}
+                  </span>
                 </div>
               </div>
-              
-              <div>
-                <Label>Split Position (character index)</Label>
-                <Input
-                  type="number"
-                  value={splitPosition}
-                  onChange={(e) => setSplitPosition(Number(e.target.value))}
+
+              {/* Slider for split position */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Split Position</Label>
+                  <span className="text-xs text-muted-foreground">
+                    Character {splitPosition} of {selectedBlock.text_raw.length}
+                  </span>
+                </div>
+                <Slider
+                  value={[splitPosition]}
+                  onValueChange={([value]) => setSplitPosition(value)}
                   min={1}
                   max={selectedBlock.text_raw.length - 1}
+                  step={1}
+                  className="w-full"
                 />
               </div>
               
+              {/* Preview of resulting blocks */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>First Part (stays with #{selectedBlock.order_index})</Label>
-                  <div className="p-3 border rounded bg-muted text-sm font-serif">
-                    {selectedBlock.text_raw.slice(0, splitPosition)}
+                  <Label className="text-xs">First Part → #{selectedBlock.order_index}</Label>
+                  <div className="p-2 border rounded bg-card text-xs font-serif mt-1 min-h-[40px]">
+                    {selectedBlock.text_raw.slice(0, splitPosition) || <span className="text-muted-foreground italic">empty</span>}
                   </div>
                 </div>
                 <div>
-                  <Label>Second Part (new block)</Label>
-                  <div className="p-3 border rounded bg-muted text-sm font-serif">
-                    {selectedBlock.text_raw.slice(splitPosition)}
+                  <Label className="text-xs">Second Part → #{selectedBlock.order_index + 1}</Label>
+                  <div className="p-2 border rounded bg-card text-xs font-serif mt-1 min-h-[40px]">
+                    {selectedBlock.text_raw.slice(splitPosition) || <span className="text-muted-foreground italic">empty</span>}
                   </div>
                 </div>
               </div>
