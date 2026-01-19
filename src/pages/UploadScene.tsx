@@ -60,6 +60,17 @@ const UploadScene = () => {
       return;
     }
 
+    // Check if user is authenticated as admin
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please log in as an admin to upload scripts',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     // Step 0: Extract text from PDF
     setIsExtracting(true);
     let pdfText: string;
@@ -83,7 +94,7 @@ const UploadScene = () => {
     setIsParsing(true);
 
     try {
-      // Call the parse-pdf edge function
+      // Call the parse-pdf edge function with auth header
       const { data: parseData, error: parseError } = await supabase.functions.invoke('parse-pdf', {
         body: {
           pdf_text_raw: pdfText,
