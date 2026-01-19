@@ -19,6 +19,7 @@ import ModernEnglishGame from "./pages/ModernEnglishGame";
 import ModernEnglishSceneViewer from "./pages/ModernEnglishSceneViewer";
 import AdminTranslations from "./pages/AdminTranslations";
 import AdminTranslationsReview from "./pages/AdminTranslationsReview";
+import AdminTranslationEditor from "./pages/AdminTranslationEditor";
 import AdminScriptFix from "./pages/AdminScriptFix";
 import AdminLogin from "./pages/AdminLogin";
 import NotFound from "./pages/NotFound";
@@ -50,6 +51,7 @@ const App = () => (
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/translations" element={<AdminTranslations />} />
             <Route path="/admin/translations-review" element={<AdminTranslationsReview />} />
+            <Route path="/admin/translation-editor" element={<AdminTranslationEditor />} />
             <Route path="/admin/script-fix" element={<AdminScriptFix />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
