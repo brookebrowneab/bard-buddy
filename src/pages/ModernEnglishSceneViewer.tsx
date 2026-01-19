@@ -194,7 +194,7 @@ const ModernEnglishSceneViewer = () => {
       // Fetch translations for these blocks using selected style
       const blockIds = blocks.map(b => b.id);
       const { data: translations, error: translationsError } = await supabase
-        .from('lineblock_translations')
+        .from('lineblock_translations_public')
         .select('lineblock_id, translation_text, status, review_status')
         .in('lineblock_id', blockIds)
         .eq('style', selectedStyle);
