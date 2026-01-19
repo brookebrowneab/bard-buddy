@@ -647,6 +647,19 @@ const AdminTranslationEditor = () => {
         changed_by: user.id,
       });
 
+      // Delete audit records for the second block before deleting the block
+      // (foreign key with ON DELETE SET NULL would fail since lineblock_id is NOT NULL)
+      await supabase
+        .from('lineblock_edit_audit')
+        .delete()
+        .eq('lineblock_id', secondBlock.id);
+
+      // Delete translations for the second block
+      await supabase
+        .from('lineblock_translations')
+        .delete()
+        .eq('lineblock_id', secondBlock.id);
+
       // Delete the second block
       await supabase
         .from('line_blocks')
