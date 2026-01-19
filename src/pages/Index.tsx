@@ -48,10 +48,10 @@ const Index = () => {
       <div className="min-h-screen bg-background flex flex-col">
         <header className="px-6 pt-8 pb-4 text-center">
           <div className="inline-flex items-center gap-2 text-primary mb-2">
-            <Drama className="w-6 h-6" />
-            <span className="font-serif text-sm uppercase tracking-wide">Shakespeare Lines</span>
+            <Drama className="w-7 h-7 md:w-6 md:h-6" />
+            <span className="font-serif text-base md:text-sm uppercase tracking-wide">Shakespeare Lines</span>
           </div>
-          <h1 className="font-serif text-2xl font-bold text-foreground">
+          <h1 className="font-serif text-2xl md:text-2xl font-bold text-foreground">
             Much Ado About Nothing
           </h1>
         </header>
@@ -59,23 +59,23 @@ const Index = () => {
         <main className="flex-1 flex flex-col items-center justify-center px-6 pb-12">
           <div className="w-full max-w-sm space-y-4 text-center">
             <Drama className="w-16 h-16 mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground">
+            <p className="text-base md:text-base text-muted-foreground">
               No script has been uploaded yet.
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-base md:text-sm text-muted-foreground">
               An admin needs to upload the script first.
             </p>
             <Link to="/upload" className="block w-full mt-6">
-              <Button variant="stage" size="xl" className="w-full">
+              <Button variant="stage" size="xl" className="w-full text-base md:text-sm min-h-14">
                 <Settings className="w-5 h-5 mr-2" />
-                Admin: Upload Script
+                <span className="leading-tight">Admin:<br className="md:hidden" /> Upload Script</span>
               </Button>
             </Link>
           </div>
         </main>
 
         <footer className="px-6 pb-8 text-center">
-          <p className="font-serif text-sm text-muted-foreground italic">
+          <p className="font-serif text-base md:text-sm text-muted-foreground italic">
             "All the world's a stage..."
           </p>
         </footer>
@@ -89,10 +89,10 @@ const Index = () => {
       {/* Header */}
       <header className="px-6 pt-8 pb-4 text-center">
         <div className="inline-flex items-center gap-2 text-primary mb-2">
-          <Drama className="w-6 h-6" />
-          <span className="font-serif text-sm uppercase tracking-wide">Shakespeare Lines</span>
+          <Drama className="w-7 h-7 md:w-6 md:h-6" />
+          <span className="font-serif text-base md:text-sm uppercase tracking-wide">Shakespeare Lines</span>
         </div>
-        <h1 className="font-serif text-2xl font-bold text-foreground">
+        <h1 className="font-serif text-2xl md:text-2xl font-bold text-foreground">
           {sceneTitle || "Much Ado About Nothing"}
         </h1>
       </header>
@@ -102,24 +102,24 @@ const Index = () => {
         <div className="w-full max-w-sm space-y-4">
           {/* Current Role Display */}
           {selectedRole && (
-            <div className="text-center mb-6 p-4 bg-card rounded-lg border border-border">
-              <p className="text-sm text-muted-foreground mb-1">Your Role</p>
-              <p className="font-serif text-xl font-semibold text-foreground">{selectedRole}</p>
+            <div className="text-center mb-6 p-4 md:p-4 bg-card rounded-lg border border-border min-h-20">
+              <p className="text-base md:text-sm text-muted-foreground mb-1">Your Role</p>
+              <p className="font-serif text-xl md:text-xl font-semibold text-foreground">{selectedRole}</p>
             </div>
           )}
 
           {/* Choose Role - Primary Action */}
           <Link to="/role-picker" className="block w-full">
-            <Button variant="stage" size="xl" className="w-full">
+            <Button variant="stage" size="xl" className="w-full text-base md:text-sm min-h-14">
               <User className="w-5 h-5 mr-2" />
-              {selectedRole ? "Change Role" : "Choose My Role"}
+              <span className="leading-tight">{selectedRole ? "Change Role" : "Choose My Role"}</span>
             </Button>
           </Link>
 
           {/* Continue Practicing - if role selected */}
           {selectedRole && (
             <Link to="/section-picker" className="block w-full">
-              <Button variant="default" size="xl" className="w-full">
+              <Button variant="default" size="xl" className="w-full text-base md:text-sm min-h-14">
                 <Sparkles className="w-5 h-5 mr-2" />
                 Practice
               </Button>
@@ -128,8 +128,8 @@ const Index = () => {
 
           {/* Admin Settings */}
           <Link to="/upload" className="block w-full">
-            <Button variant="ghost" size="lg" className="w-full text-muted-foreground">
-              <Settings className="w-4 h-4 mr-2" />
+            <Button variant="ghost" size="lg" className="w-full text-muted-foreground text-base md:text-sm min-h-12">
+              <Settings className="w-5 h-5 md:w-4 md:h-4 mr-2" />
               Admin Settings
             </Button>
           </Link>
@@ -138,7 +138,7 @@ const Index = () => {
 
       {/* Footer */}
       <footer className="px-6 pb-8 text-center">
-        <p className="font-serif text-sm text-muted-foreground italic">
+        <p className="font-serif text-base md:text-sm text-muted-foreground italic">
           "All the world's a stage..."
         </p>
       </footer>
