@@ -54,6 +54,23 @@ const AdminTranslations = () => {
   const cancelRef = useRef(false);
   const cancelGpt52Ref = useRef(false);
   
+  // Block diagnostic interface matching edge function response
+  interface BlockDiagnostic {
+    lineblock_id: string;
+    text_char_len: number;
+    prompt_char_len: number;
+    max_output_tokens: number;
+    model: string;
+    success: boolean;
+    skipped_too_long?: boolean;
+    error?: {
+      http_status?: number;
+      type?: string;
+      code?: string;
+      message: string;
+    };
+  }
+
   // Diagnostics state
   const [gpt5Diagnostics, setGpt5Diagnostics] = useState<{
     lastBatchProcessed: number;
@@ -62,7 +79,9 @@ const AdminTranslations = () => {
     lastResponse: any;
     lastError: string | null;
     lastRunTime: string | null;
-    errorDetails: string[];
+    maxOutputTokens: number;
+    maxCharLengthThreshold: number;
+    blockDiagnostics: BlockDiagnostic[];
   }>({
     lastBatchProcessed: 0,
     lastBatchErrors: 0,
@@ -70,7 +89,9 @@ const AdminTranslations = () => {
     lastResponse: null,
     lastError: null,
     lastRunTime: null,
-    errorDetails: [],
+    maxOutputTokens: 200,
+    maxCharLengthThreshold: 1200,
+    blockDiagnostics: [],
   });
 
   // Check admin status
@@ -366,7 +387,9 @@ const AdminTranslations = () => {
           lastResponse: result,
           lastError: response.ok ? null : (result.error || `HTTP ${response.status}`),
           lastRunTime: new Date().toISOString(),
-          errorDetails: result.error_details || [],
+          maxOutputTokens: result.max_output_tokens || 200,
+          maxCharLengthThreshold: result.max_char_length_threshold || 1200,
+          blockDiagnostics: result.block_diagnostics || [],
         });
         
         if (!response.ok) throw new Error(result.error);
@@ -389,7 +412,7 @@ const AdminTranslations = () => {
         ...prev,
         lastError: error.message || 'Unknown error',
         lastRunTime: new Date().toISOString(),
-        errorDetails: [error.message || 'Unknown error'],
+        blockDiagnostics: [],
       }));
       toast.error(error.message || 'Failed to generate GPT-5 translations');
     } finally {
@@ -753,23 +776,72 @@ const AdminTranslations = () => {
                     </div>
                   </div>
                   
-                  {(gpt5Diagnostics.lastError || gpt5Diagnostics.errorDetails.length > 0) && (
+                  {/* Config info */}
+                  <div className="text-xs text-muted-foreground border-t pt-2">
+                    <span className="mr-4">Max output tokens: <strong>{gpt5Diagnostics.maxOutputTokens}</strong></span>
+                    <span>Max char length: <strong>{gpt5Diagnostics.maxCharLengthThreshold}</strong></span>
+                  </div>
+
+                  {/* Global error */}
+                  {gpt5Diagnostics.lastError && (
                     <Alert variant="destructive">
                       <AlertCircle className="h-4 w-4" />
-                      <AlertDescription className="font-mono text-xs break-all space-y-1">
-                        {gpt5Diagnostics.lastError && <div>{gpt5Diagnostics.lastError}</div>}
-                        {gpt5Diagnostics.errorDetails.length > 0 && (
-                          <div className="mt-2">
-                            <strong>Recent errors:</strong>
-                            <ul className="list-disc list-inside">
-                              {gpt5Diagnostics.errorDetails.map((err, i) => (
-                                <li key={i}>{err}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                      <AlertDescription className="font-mono text-xs break-all">
+                        {gpt5Diagnostics.lastError}
                       </AlertDescription>
                     </Alert>
+                  )}
+
+                  {/* Per-block error rows */}
+                  {gpt5Diagnostics.blockDiagnostics.filter(b => !b.success).length > 0 && (
+                    <div className="border rounded-md overflow-hidden">
+                      <div className="bg-muted px-3 py-2 text-xs font-medium">
+                        Per-Block Error Details
+                      </div>
+                      <div className="divide-y max-h-60 overflow-auto">
+                        {gpt5Diagnostics.blockDiagnostics.filter(b => !b.success).map((block, i) => (
+                          <div key={i} className="px-3 py-2 text-xs space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <code className="bg-muted px-1 rounded text-[10px]">{block.lineblock_id.slice(0, 8)}...</code>
+                              <span className="text-muted-foreground">
+                                text: {block.text_char_len} chars | prompt: {block.prompt_char_len} chars | max_tokens: {block.max_output_tokens}
+                              </span>
+                              {block.skipped_too_long && (
+                                <Badge variant="outline" className="text-[10px] border-orange-500 text-orange-600">TOO LONG</Badge>
+                              )}
+                            </div>
+                            {block.error && (
+                              <div className="text-destructive font-mono pl-2 border-l-2 border-destructive/30">
+                                {block.error.http_status && <span className="mr-2">HTTP {block.error.http_status}</span>}
+                                {block.error.type && <span className="mr-2">[{block.error.type}]</span>}
+                                {block.error.code && <span className="mr-2">({block.error.code})</span>}
+                                <span>{block.error.message}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Success blocks summary */}
+                  {gpt5Diagnostics.blockDiagnostics.filter(b => b.success).length > 0 && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                        View {gpt5Diagnostics.blockDiagnostics.filter(b => b.success).length} successful block(s)
+                      </summary>
+                      <div className="mt-2 divide-y border rounded-md max-h-40 overflow-auto">
+                        {gpt5Diagnostics.blockDiagnostics.filter(b => b.success).map((block, i) => (
+                          <div key={i} className="px-3 py-1 flex items-center gap-2">
+                            <CheckCircle className="w-3 h-3 text-green-600" />
+                            <code className="bg-muted px-1 rounded text-[10px]">{block.lineblock_id.slice(0, 8)}...</code>
+                            <span className="text-muted-foreground">
+                              {block.text_char_len} chars → {block.model}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   )}
                   
                   {gpt5Diagnostics.lastResponse && (

@@ -28,6 +28,23 @@ Rules:
 - Preserve the emotional tone and meaning
 - Do not add explanations or context`;
 
+// Interface for per-block diagnostics
+interface BlockDiagnostic {
+  lineblock_id: string;
+  text_char_len: number;
+  prompt_char_len: number;
+  max_output_tokens: number;
+  model: string;
+  success: boolean;
+  skipped_too_long?: boolean;
+  error?: {
+    http_status?: number;
+    type?: string;
+    code?: string;
+    message: string;
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -115,7 +132,8 @@ serve(async (req) => {
         success: true, 
         message: 'No line blocks found',
         total: 0,
-        processed: 0 
+        processed: 0,
+        block_diagnostics: [],
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -144,7 +162,8 @@ serve(async (req) => {
         total: lineBlocks.length,
         processed: 0,
         already_complete: existingIds.size,
-        has_more: false
+        has_more: false,
+        block_diagnostics: [],
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -154,13 +173,35 @@ serve(async (req) => {
     let processed = 0;
     let errors = 0;
     let skippedTooLong = 0;
-    const errorDetails: string[] = [];
+    const blockDiagnostics: BlockDiagnostic[] = [];
 
     const batchPromises = blocksToProcess.map(async (block) => {
-      const charLen = block.text_raw?.length || 0;
+      const textCharLen = block.text_raw?.length || 0;
+      const userPrompt = `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"`;
+      const promptCharLen = SYSTEM_PROMPT.length + userPrompt.length;
       
+      // Base diagnostic info
+      const baseDiag: Omit<BlockDiagnostic, 'success' | 'error' | 'skipped_too_long'> = {
+        lineblock_id: block.id,
+        text_char_len: textCharLen,
+        prompt_char_len: promptCharLen,
+        max_output_tokens: MAX_OUTPUT_TOKENS,
+        model: MODEL,
+      };
+
       // Check if block is too long - skip OpenAI and create issue
-      if (charLen > MAX_CHAR_LENGTH) {
+      if (textCharLen > MAX_CHAR_LENGTH) {
+        const diag: BlockDiagnostic = {
+          ...baseDiag,
+          success: false,
+          skipped_too_long: true,
+          error: {
+            message: `Block too long (${textCharLen} chars > ${MAX_CHAR_LENGTH} threshold); split required`,
+          },
+        };
+
+        console.log(`[SKIP] Block ${block.id}: too long (${textCharLen} chars)`, JSON.stringify(diag));
+
         try {
           // Check if issue already exists
           const { data: existingIssue } = await supabase
@@ -177,7 +218,7 @@ serve(async (req) => {
               .insert({
                 lineblock_id: block.id,
                 issue_type: 'needs_split',
-                note: `Block has ${charLen} characters (threshold: ${MAX_CHAR_LENGTH}). Needs manual split before translation.`,
+                note: `Block has ${textCharLen} characters (threshold: ${MAX_CHAR_LENGTH}). Needs manual split before translation.`,
                 status: 'open',
                 created_by: user.id,
               });
@@ -190,7 +231,7 @@ serve(async (req) => {
               lineblock_id: block.id,
               style: STYLE,
               status: 'failed',
-              error: `Block too long (${charLen} chars); split required`,
+              error: `Block too long (${textCharLen} chars); split required`,
               source: 'ai',
               review_status: 'needs_review',
               model: MODEL,
@@ -199,10 +240,11 @@ serve(async (req) => {
               onConflict: 'lineblock_id,style',
             });
 
-          return { success: false, skippedTooLong: true };
+          return diag;
         } catch (err) {
           console.error(`Error handling oversized block ${block.id}:`, err);
-          return { success: false, error: 'Failed to create issue for oversized block' };
+          diag.error = { message: 'Failed to create issue for oversized block' };
+          return diag;
         }
       }
 
@@ -222,6 +264,8 @@ serve(async (req) => {
             onConflict: 'lineblock_id,style',
           });
 
+        console.log(`[START] Block ${block.id}: text=${textCharLen}chars, prompt=${promptCharLen}chars, max_tokens=${MAX_OUTPUT_TOKENS}`);
+
         // Call Lovable AI Gateway with lower temperature and output limit
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
@@ -233,7 +277,7 @@ serve(async (req) => {
             model: MODEL,
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
+              { role: 'user', content: userPrompt },
             ],
             max_completion_tokens: MAX_OUTPUT_TOKENS,
             temperature: 0.2,
@@ -242,23 +286,45 @@ serve(async (req) => {
 
         if (!aiResponse.ok) {
           const errorBody = await aiResponse.text();
-          console.error(`AI API error ${aiResponse.status}:`, errorBody);
+          const httpStatus = aiResponse.status;
           
+          // Parse error details from response
+          let errorType: string | undefined;
+          let errorCode: string | undefined;
           let errorMessage: string;
-          if (aiResponse.status === 429) {
-            errorMessage = 'Rate limit exceeded - please try again later';
-          } else if (aiResponse.status === 402) {
-            errorMessage = 'Payment required - please add credits to your workspace';
-          } else {
-            // Try to parse error body for more details
-            try {
-              const parsed = JSON.parse(errorBody);
-              errorMessage = parsed.error?.message || parsed.message || `API error ${aiResponse.status}`;
-            } catch {
-              errorMessage = `AI API error: ${aiResponse.status} - ${errorBody.slice(0, 200)}`;
-            }
+
+          try {
+            const parsed = JSON.parse(errorBody);
+            errorType = parsed.error?.type;
+            errorCode = parsed.error?.code;
+            errorMessage = parsed.error?.message || parsed.message || `API error ${httpStatus}`;
+          } catch {
+            errorMessage = `AI API error: ${httpStatus} - ${errorBody.slice(0, 300)}`;
           }
-          throw new Error(errorMessage);
+
+          const diag: BlockDiagnostic = {
+            ...baseDiag,
+            success: false,
+            error: {
+              http_status: httpStatus,
+              type: errorType,
+              code: errorCode,
+              message: errorMessage,
+            },
+          };
+
+          console.error(`[ERROR] Block ${block.id}:`, JSON.stringify(diag));
+
+          await supabase
+            .from('lineblock_translations')
+            .update({
+              status: 'failed',
+              error: JSON.stringify({ http_status: httpStatus, type: errorType, code: errorCode, message: errorMessage }),
+            })
+            .eq('lineblock_id', block.id)
+            .eq('style', STYLE);
+
+          return diag;
         }
 
         const aiData = await aiResponse.json();
@@ -282,14 +348,34 @@ serve(async (req) => {
         }
 
         if (!translationText) {
-          console.error('AI returned no message content:', JSON.stringify(aiData).slice(0, 1000));
           const refusal = msg?.refusal;
           const finishReason = choice?.finish_reason;
-          throw new Error(
-            refusal
-              ? `Model refused: ${refusal}`
-              : `Empty response from AI (finish_reason=${finishReason ?? 'unknown'})`
-          );
+          const emptyError = refusal
+            ? `Model refused: ${refusal}`
+            : `Empty response from AI (finish_reason=${finishReason ?? 'unknown'})`;
+
+          const diag: BlockDiagnostic = {
+            ...baseDiag,
+            success: false,
+            error: {
+              type: refusal ? 'refusal' : 'empty_response',
+              code: finishReason,
+              message: emptyError,
+            },
+          };
+
+          console.error(`[ERROR] Block ${block.id}: empty response`, JSON.stringify({ diag, aiData: JSON.stringify(aiData).slice(0, 500) }));
+
+          await supabase
+            .from('lineblock_translations')
+            .update({
+              status: 'failed',
+              error: JSON.stringify(diag.error),
+            })
+            .eq('lineblock_id', block.id)
+            .eq('style', STYLE);
+
+          return diag;
         }
 
         // Save translation
@@ -303,38 +389,56 @@ serve(async (req) => {
           .eq('lineblock_id', block.id)
           .eq('style', STYLE);
 
-        return { success: true };
+        const successDiag: BlockDiagnostic = { ...baseDiag, success: true };
+        console.log(`[SUCCESS] Block ${block.id}: translated ${textCharLen} chars`);
+        return successDiag;
+
       } catch (error) {
-        console.error(`Error translating ${block.id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        const diag: BlockDiagnostic = {
+          ...baseDiag,
+          success: false,
+          error: {
+            type: 'exception',
+            message: errorMessage,
+          },
+        };
+
+        console.error(`[EXCEPTION] Block ${block.id}:`, JSON.stringify(diag));
         
         await supabase
           .from('lineblock_translations')
           .update({
             status: 'failed',
-            error: errorMessage,
+            error: JSON.stringify(diag.error),
           })
           .eq('lineblock_id', block.id)
           .eq('style', STYLE);
 
-        return { success: false, error: errorMessage };
+        return diag;
       }
     });
 
     const results = await Promise.all(batchPromises);
-    processed = results.filter(r => r.success).length;
-    errors = results.filter(r => !r.success && !r.skippedTooLong).length;
-    skippedTooLong = results.filter(r => r.skippedTooLong).length;
     
-    // Collect error details for diagnostics
-    results.forEach(r => {
-      if (r.error) errorDetails.push(r.error);
+    results.forEach(diag => {
+      blockDiagnostics.push(diag);
+      if (diag.success) {
+        processed++;
+      } else if (diag.skipped_too_long) {
+        skippedTooLong++;
+      } else {
+        errors++;
+      }
     });
 
     return new Response(JSON.stringify({ 
       success: true,
       style: STYLE,
       model: MODEL,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+      max_char_length_threshold: MAX_CHAR_LENGTH,
       total: lineBlocks.length,
       already_complete: existingIds.size,
       processed,
@@ -342,7 +446,7 @@ serve(async (req) => {
       skipped_too_long: skippedTooLong,
       has_more: hasMore,
       remaining: missingBlocks.length - blocksToProcess.length,
-      error_details: errorDetails.slice(0, 5), // Return first 5 errors for diagnostics
+      block_diagnostics: blockDiagnostics,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
