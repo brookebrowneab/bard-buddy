@@ -75,18 +75,14 @@ const ModernEnglishSceneViewer = () => {
     const savedMode = localStorage.getItem(STORAGE_KEYS.VISIBLE_MODE) as VisibleMode | null;
     const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
     const savedCharacter = localStorage.getItem(STORAGE_KEYS.SELECTED_CHARACTER);
-    const savedStyle = localStorage.getItem(STORAGE_KEYS.TRANSLATION_STYLE);
-    
+
     if (savedMode) setVisibleMode(savedMode);
     if (savedSection) setSelectedSectionId(savedSection);
     if (savedCharacter) setSelectedCharacter(savedCharacter);
-    // Only use saved style if it exists in available options
-    if (savedStyle && TRANSLATION_STYLES.some(s => s.value === savedStyle)) {
-      setSelectedStyle(savedStyle);
-    } else {
-      // Clear invalid cached style and use default
-      localStorage.setItem(STORAGE_KEYS.TRANSLATION_STYLE, DEFAULT_STYLE);
-    }
+
+    // Force ChatGPT style to avoid stale cached styles causing "No translation available yet"
+    setSelectedStyle(DEFAULT_STYLE);
+    localStorage.setItem(STORAGE_KEYS.TRANSLATION_STYLE, DEFAULT_STYLE);
   }, []);
 
   // Set character from context
