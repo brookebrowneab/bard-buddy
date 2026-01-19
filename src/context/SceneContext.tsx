@@ -115,6 +115,13 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
     setCurrentLineIndex(0);
   };
 
+  // Strip inline stage directions like [Aside to Don Pedro] from text for practice games
+  const stripStageDirections = (text: string): string => {
+    // Remove bracketed stage directions, preserving surrounding text
+    // Handles [text] patterns but keeps the rest of the line
+    return text.replace(/\s*\[[^\]]*\]\s*/g, ' ').trim().replace(/\s+/g, ' ');
+  };
+
   // Load lines from database LineBlocks
   const loadFromLineBlocks = (blocks: LineBlock[], role: string) => {
     const roleBlocks = blocks.filter(b => 
@@ -123,8 +130,8 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
     
     const lines: PracticeLine[] = roleBlocks.map(block => ({
       character: block.speaker_name,
-      cue_line: block.preceding_cue_raw || '(Scene opens)',
-      shakespeare_line: block.text_raw,
+      cue_line: stripStageDirections(block.preceding_cue_raw || '(Scene opens)'),
+      shakespeare_line: stripStageDirections(block.text_raw),
       modern_hint: block.modern_hint || '',
     }));
     
