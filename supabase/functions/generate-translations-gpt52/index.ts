@@ -6,27 +6,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const PROMPT_VERSION = "gpt5_v1";
+const PROMPT_VERSION = "gpt5_v2";
 const MODEL = "openai/gpt-5";
 const STYLE = "plain_english_gpt5";
 
 // Threshold for "too long" blocks - skip OpenAI and flag for manual split
 const MAX_CHAR_LENGTH = 1200;
 
-// For normal blocks: keep output concise
-const MAX_OUTPUT_TOKENS = 200;
+// Default max output tokens (increased from 200 to 400)
+const DEFAULT_MAX_OUTPUT_TOKENS = 400;
+
+// Retry max output tokens if first attempt has finish_reason=length or empty
+const RETRY_MAX_OUTPUT_TOKENS = 800;
 
 // Keep batches smaller to reduce timeouts when using high-capability models.
 const MAX_LINES_PER_REQUEST = 5;
 
-const SYSTEM_PROMPT = `You are a Shakespeare translator. Given a line of Shakespearean text, provide a clear, simple modern English translation that a child could understand.
+// Tightened prompt to force brevity and no extra commentary
+const SYSTEM_PROMPT = `You are a Shakespeare translator.
 
-Rules:
-- Output ONLY the modern English translation, nothing else
-- Keep it concise - one or two sentences maximum
-- Use simple, everyday vocabulary
-- Preserve the emotional tone and meaning
-- Do not add explanations or context`;
+STRICT RULES:
+- Output ONLY the modern English translation
+- Max 2 sentences
+- No commentary, no notes, no paraphrase labels
+- No quotation marks around the translation
+- Use simple, everyday vocabulary a child could understand
+- Preserve the emotional tone and meaning`;
 
 // Models that don't support temperature/top_p sampling params (only default=1)
 const MODELS_NO_SAMPLING_PARAMS = ['openai/gpt-5', 'openai/gpt-5-mini', 'openai/gpt-5.2'];
@@ -46,6 +51,10 @@ interface BlockDiagnostic {
   success: boolean;
   skipped_too_long?: boolean;
   retried_without_sampling?: boolean;
+  retried_with_more_tokens?: boolean;
+  finish_reason?: string;
+  extracted_text_length?: number;
+  extracted_text_preview?: string; // first 120 chars for debugging
   error?: {
     http_status?: number;
     type?: string;
@@ -189,19 +198,20 @@ serve(async (req) => {
       const userPrompt = `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"`;
       const promptCharLen = SYSTEM_PROMPT.length + userPrompt.length;
       
-      // Base diagnostic info
-      const baseDiag: Omit<BlockDiagnostic, 'success' | 'error' | 'skipped_too_long'> = {
+      // Base diagnostic info - will update max_output_tokens if we retry
+      let currentMaxTokens = DEFAULT_MAX_OUTPUT_TOKENS;
+      const baseDiag = () => ({
         lineblock_id: block.id,
         text_char_len: textCharLen,
         prompt_char_len: promptCharLen,
-        max_output_tokens: MAX_OUTPUT_TOKENS,
+        max_output_tokens: currentMaxTokens,
         model: MODEL,
-      };
+      });
 
       // Check if block is too long - skip OpenAI and create issue
       if (textCharLen > MAX_CHAR_LENGTH) {
         const diag: BlockDiagnostic = {
-          ...baseDiag,
+          ...baseDiag(),
           success: false,
           skipped_too_long: true,
           error: {
@@ -273,17 +283,17 @@ serve(async (req) => {
             onConflict: 'lineblock_id,style',
           });
 
-        console.log(`[START] Block ${block.id}: text=${textCharLen}chars, prompt=${promptCharLen}chars, max_tokens=${MAX_OUTPUT_TOKENS}, model=${MODEL}`);
+        console.log(`[START] Block ${block.id}: text=${textCharLen}chars, prompt=${promptCharLen}chars, max_tokens=${currentMaxTokens}, model=${MODEL}`);
 
         // Build request payload - conditionally include temperature
-        const buildPayload = (includeSamplingParams: boolean) => {
+        const buildPayload = (maxTokens: number, includeSamplingParams: boolean) => {
           const payload: any = {
             model: MODEL,
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: userPrompt },
             ],
-            max_completion_tokens: MAX_OUTPUT_TOKENS,
+            max_completion_tokens: maxTokens,
           };
           
           // Only add temperature for models that support it
@@ -306,30 +316,52 @@ serve(async (req) => {
           });
         };
 
-        // First attempt - include sampling params only if model supports them
-        let aiResponse = await callAI(buildPayload(true));
+        // Helper to extract text from AI response
+        const extractText = (aiData: any): { text: string | undefined; finishReason: string | undefined; refusal: string | undefined } => {
+          const choice = aiData?.choices?.[0];
+          const msg = choice?.message;
+          const finishReason = choice?.finish_reason;
+          const refusal = msg?.refusal;
+          
+          let text: string | undefined;
+          const content = msg?.content;
+          
+          if (typeof content === 'string') {
+            text = content.trim();
+          } else if (Array.isArray(content)) {
+            text = content
+              .map((part: any) => {
+                if (typeof part === 'string') return part;
+                return part?.text ?? part?.value ?? '';
+              })
+              .join('')
+              .trim();
+          }
+          
+          return { text, finishReason, refusal };
+        };
+
         let retriedWithoutSampling = false;
+        let retriedWithMoreTokens = false;
+        let finalFinishReason: string | undefined;
+        let extractedTextLength = 0;
+        let extractedTextPreview: string | undefined;
+
+        // First attempt
+        let aiResponse = await callAI(buildPayload(currentMaxTokens, true));
 
         // Check if we got an unsupported_value error for sampling params
         if (!aiResponse.ok && aiResponse.status === 400) {
           const errorBody = await aiResponse.text();
           const lowerError = errorBody.toLowerCase();
           
-          // Check for unsupported temperature/top_p/sampling errors
           if (lowerError.includes('unsupported') && 
               (lowerError.includes('temperature') || lowerError.includes('top_p') || lowerError.includes('sampling'))) {
-            console.log(`[RETRY] Block ${block.id}: retrying without sampling params due to unsupported_value error`);
-            
-            // Retry without any sampling parameters
-            aiResponse = await callAI(buildPayload(false));
+            console.log(`[RETRY] Block ${block.id}: retrying without sampling params`);
+            aiResponse = await callAI(buildPayload(currentMaxTokens, false));
             retriedWithoutSampling = true;
           } else {
-            // Re-parse for normal error handling below
-            // We need to create a fake response with the error body
-            aiResponse = new Response(errorBody, { 
-              status: 400, 
-              headers: aiResponse.headers 
-            });
+            aiResponse = new Response(errorBody, { status: 400, headers: aiResponse.headers });
           }
         }
 
@@ -337,7 +369,6 @@ serve(async (req) => {
           const errorBody = await aiResponse.text();
           const httpStatus = aiResponse.status;
           
-          // Parse error details from response
           let errorType: string | undefined;
           let errorCode: string | undefined;
           let errorMessage: string;
@@ -352,65 +383,70 @@ serve(async (req) => {
           }
 
           const diag: BlockDiagnostic = {
-            ...baseDiag,
+            ...baseDiag(),
             success: false,
             retried_without_sampling: retriedWithoutSampling,
-            error: {
-              http_status: httpStatus,
-              type: errorType,
-              code: errorCode,
-              message: errorMessage,
-            },
+            error: { http_status: httpStatus, type: errorType, code: errorCode, message: errorMessage },
           };
 
           console.error(`[ERROR] Block ${block.id}:`, JSON.stringify(diag));
 
           await supabase
             .from('lineblock_translations')
-            .update({
-              status: 'failed',
-              error: JSON.stringify({ http_status: httpStatus, type: errorType, code: errorCode, message: errorMessage }),
-            })
+            .update({ status: 'failed', error: JSON.stringify(diag.error) })
             .eq('lineblock_id', block.id)
             .eq('style', STYLE);
 
           return diag;
         }
 
-        const aiData = await aiResponse.json();
-        const choice = aiData?.choices?.[0];
-        const msg = choice?.message;
+        // Parse first attempt
+        let aiData = await aiResponse.json();
+        let { text: translationText, finishReason, refusal } = extractText(aiData);
+        finalFinishReason = finishReason;
+        extractedTextLength = translationText?.length || 0;
+        extractedTextPreview = translationText?.slice(0, 120);
 
-        let translationText: string | undefined;
-        const content = msg?.content;
-
-        if (typeof content === 'string') {
-          translationText = content.trim();
-        } else if (Array.isArray(content)) {
-          // Some providers return structured content parts
-          translationText = content
-            .map((part: any) => {
-              if (typeof part === 'string') return part;
-              return part?.text ?? part?.value ?? '';
-            })
-            .join('')
-            .trim();
+        // Retry with more tokens if finish_reason=length OR text is empty
+        if ((finishReason === 'length' || !translationText) && !refusal) {
+          console.log(`[RETRY] Block ${block.id}: finish_reason=${finishReason}, text_len=${extractedTextLength}, retrying with max_tokens=${RETRY_MAX_OUTPUT_TOKENS}`);
+          
+          currentMaxTokens = RETRY_MAX_OUTPUT_TOKENS;
+          retriedWithMoreTokens = true;
+          
+          aiResponse = await callAI(buildPayload(RETRY_MAX_OUTPUT_TOKENS, !retriedWithoutSampling));
+          
+          if (aiResponse.ok) {
+            aiData = await aiResponse.json();
+            const retryResult = extractText(aiData);
+            
+            // Use retry result if it has more content
+            if (retryResult.text && retryResult.text.length >= extractedTextLength) {
+              translationText = retryResult.text;
+              finalFinishReason = retryResult.finishReason;
+              extractedTextLength = translationText.length;
+              extractedTextPreview = translationText.slice(0, 120);
+              refusal = retryResult.refusal;
+            }
+          }
         }
 
+        // Check if we still have no text
         if (!translationText) {
-          const refusal = msg?.refusal;
-          const finishReason = choice?.finish_reason;
           const emptyError = refusal
             ? `Model refused: ${refusal}`
-            : `Empty response from AI (finish_reason=${finishReason ?? 'unknown'})`;
+            : `Empty response from AI (finish_reason=${finalFinishReason ?? 'unknown'}) with max_output_tokens=${currentMaxTokens}`;
 
           const diag: BlockDiagnostic = {
-            ...baseDiag,
+            ...baseDiag(),
             success: false,
             retried_without_sampling: retriedWithoutSampling,
+            retried_with_more_tokens: retriedWithMoreTokens,
+            finish_reason: finalFinishReason,
+            extracted_text_length: extractedTextLength,
             error: {
               type: refusal ? 'refusal' : 'empty_response',
-              code: finishReason,
+              code: finalFinishReason,
               message: emptyError,
             },
           };
@@ -419,10 +455,7 @@ serve(async (req) => {
 
           await supabase
             .from('lineblock_translations')
-            .update({
-              status: 'failed',
-              error: JSON.stringify(diag.error),
-            })
+            .update({ status: 'failed', error: JSON.stringify(diag.error) })
             .eq('lineblock_id', block.id)
             .eq('style', STYLE);
 
@@ -441,18 +474,28 @@ serve(async (req) => {
           .eq('style', STYLE);
 
         const successDiag: BlockDiagnostic = { 
-          ...baseDiag, 
+          ...baseDiag(), 
           success: true,
           retried_without_sampling: retriedWithoutSampling,
+          retried_with_more_tokens: retriedWithMoreTokens,
+          finish_reason: finalFinishReason,
+          extracted_text_length: extractedTextLength,
+          extracted_text_preview: extractedTextPreview,
         };
-        console.log(`[SUCCESS] Block ${block.id}: translated ${textCharLen} chars${retriedWithoutSampling ? ' (retried without sampling params)' : ''}`);
+        
+        const retryInfo = [
+          retriedWithoutSampling ? 'no-sampling' : '',
+          retriedWithMoreTokens ? `more-tokens(${RETRY_MAX_OUTPUT_TOKENS})` : '',
+        ].filter(Boolean).join(', ');
+        
+        console.log(`[SUCCESS] Block ${block.id}: translated ${textCharLen} chars → ${extractedTextLength} chars${retryInfo ? ` (retried: ${retryInfo})` : ''}`);
         return successDiag;
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         
         const diag: BlockDiagnostic = {
-          ...baseDiag,
+          ...baseDiag(),
           success: false,
           error: {
             type: 'exception',
@@ -492,7 +535,7 @@ serve(async (req) => {
       success: true,
       style: STYLE,
       model: MODEL,
-      max_output_tokens: MAX_OUTPUT_TOKENS,
+      max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
       max_char_length_threshold: MAX_CHAR_LENGTH,
       total: lineBlocks.length,
       already_complete: existingIds.size,
