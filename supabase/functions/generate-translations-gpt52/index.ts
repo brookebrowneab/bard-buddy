@@ -9,9 +9,13 @@ const corsHeaders = {
 const PROMPT_VERSION = "gpt5_v1";
 const MODEL = "openai/gpt-5";
 const STYLE = "plain_english_gpt5";
-const TEMPERATURE = 0.15;
-// Process max 10 lines per request to avoid timeout (edge functions have 60s limit)
-const MAX_LINES_PER_REQUEST = 10;
+
+// Some reasoning-capable models may spend tokens "thinking" before producing output.
+// Give enough budget to reliably produce the final translation.
+const MAX_COMPLETION_TOKENS = 800;
+
+// Keep batches smaller to reduce timeouts when using high-capability models.
+const MAX_LINES_PER_REQUEST = 5;
 
 const SYSTEM_PROMPT = `You are a Shakespeare translator. Given a line of Shakespearean text, provide a clear, simple modern English translation that a child could understand.
 
@@ -165,7 +169,7 @@ serve(async (req) => {
             onConflict: 'lineblock_id,style',
           });
 
-        // Call Lovable AI Gateway with GPT-5.2
+        // Call Lovable AI Gateway
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -178,7 +182,9 @@ serve(async (req) => {
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
             ],
-            max_completion_tokens: 200,
+            max_completion_tokens: MAX_COMPLETION_TOKENS,
+            // GPT-5 only supports temperature=1
+            temperature: 1,
           }),
         });
 
@@ -195,10 +201,34 @@ serve(async (req) => {
         }
 
         const aiData = await aiResponse.json();
-        const translationText = aiData.choices?.[0]?.message?.content?.trim();
+        const choice = aiData?.choices?.[0];
+        const msg = choice?.message;
+
+        let translationText: string | undefined;
+        const content = msg?.content;
+
+        if (typeof content === 'string') {
+          translationText = content.trim();
+        } else if (Array.isArray(content)) {
+          // Some providers return structured content parts
+          translationText = content
+            .map((part: any) => {
+              if (typeof part === 'string') return part;
+              return part?.text ?? part?.value ?? '';
+            })
+            .join('')
+            .trim();
+        }
 
         if (!translationText) {
-          throw new Error('Empty response from AI');
+          console.error('AI returned no message content:', JSON.stringify(aiData).slice(0, 1000));
+          const refusal = msg?.refusal;
+          const finishReason = choice?.finish_reason;
+          throw new Error(
+            refusal
+              ? `Model refused: ${refusal}`
+              : `Empty response from AI (finish_reason=${finishReason ?? 'unknown'})`
+          );
         }
 
         // Save translation
