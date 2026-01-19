@@ -154,20 +154,36 @@ const ModernEnglishSceneViewer = () => {
 
   // Fetch line blocks with translations - READ ONLY, no AI calls
   useEffect(() => {
+    let isActive = true;
+
     const fetchLines = async () => {
+      // Avoid a "fetch everything" call before we know the active section.
+      if (!selectedSectionId) {
+        if (!isActive) return;
+        setLineBlocks([]);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
 
       let query = supabase
         .from('line_blocks')
         .select('id, order_index, speaker_name, text_raw, section_id')
         .eq('scene_id', sceneId)
+        .eq('section_id', selectedSectionId)
         .order('order_index');
 
-      if (selectedSectionId) {
-        query = query.eq('section_id', selectedSectionId);
-      }
+      const { data: blocks, error: blocksError } = await query;
 
-      const { data: blocks } = await query;
+      if (!isActive) return;
+
+      if (blocksError) {
+        console.error('Error fetching line blocks:', blocksError);
+        setLineBlocks([]);
+        setLoading(false);
+        return;
+      }
 
       if (!blocks || blocks.length === 0) {
         setLineBlocks([]);
@@ -177,11 +193,17 @@ const ModernEnglishSceneViewer = () => {
 
       // Fetch translations for these blocks using selected style
       const blockIds = blocks.map(b => b.id);
-      const { data: translations } = await supabase
+      const { data: translations, error: translationsError } = await supabase
         .from('lineblock_translations')
         .select('lineblock_id, translation_text, status, review_status')
         .in('lineblock_id', blockIds)
         .eq('style', selectedStyle);
+
+      if (!isActive) return;
+
+      if (translationsError) {
+        console.error('Error fetching translations:', translationsError);
+      }
 
       const translationMap = new Map(
         (translations || []).map(t => [t.lineblock_id, t])
@@ -197,6 +219,10 @@ const ModernEnglishSceneViewer = () => {
     };
 
     fetchLines();
+
+    return () => {
+      isActive = false;
+    };
   }, [sceneId, selectedSectionId, selectedStyle]);
 
   // Update visible translations when mode or data changes
