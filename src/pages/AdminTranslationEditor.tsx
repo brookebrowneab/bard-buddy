@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronLeft, Save, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Loader2, ChevronLeft, Save, CheckCircle, AlertCircle, RefreshCw, Scissors, Combine, ChevronUp, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID } from "@/config/canonicalScenes";
@@ -24,6 +27,7 @@ interface LineBlockWithTranslation {
   speaker_name: string;
   text_raw: string;
   section_id: string | null;
+  scene_id: string;
   translation?: {
     id: string;
     translation_text: string | null;
@@ -51,18 +55,33 @@ const AdminTranslationEditor = () => {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // Track edits: lineblock_id -> edited text
-  const [edits, setEdits] = useState<Map<string, string>>(new Map());
+  // Track translation edits: lineblock_id -> edited text
+  const [translationEdits, setTranslationEdits] = useState<Map<string, string>>(new Map());
+  // Track raw text edits: lineblock_id -> edited text
+  const [rawTextEdits, setRawTextEdits] = useState<Map<string, string>>(new Map());
   // Track which are currently saving
   const [saving, setSaving] = useState<Set<string>>(new Set());
   // Track save status: lineblock_id -> 'saved' | 'error'
   const [saveStatus, setSaveStatus] = useState<Map<string, 'saved' | 'error'>>(new Map());
   
   // Auto-save timers
-  const saveTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const translationTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const rawTextTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
   
   // Session for API calls
   const sessionRef = useRef<any>(null);
+
+  // Split dialog state
+  const [selectedBlock, setSelectedBlock] = useState<LineBlockWithTranslation | null>(null);
+  const [showSplitDialog, setShowSplitDialog] = useState(false);
+  const [splitPosition, setSplitPosition] = useState(0);
+  const [splitting, setSplitting] = useState(false);
+  const [newBlockSpeaker, setNewBlockSpeaker] = useState("");
+
+  // Merge dialog state
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<'prev' | 'next' | null>(null);
+  const [merging, setMerging] = useState(false);
 
   // Check admin status
   useEffect(() => {
@@ -124,7 +143,7 @@ const AdminTranslationEditor = () => {
     if (isAdmin) fetchSections();
   }, [isAdmin]);
 
-  // Fetch line blocks with translations (without reloading the page)
+  // Fetch line blocks with translations
   const fetchLineBlocks = useCallback(async (silent = false) => {
     if (!selectedSectionId) return;
     
@@ -132,7 +151,7 @@ const AdminTranslationEditor = () => {
 
     const { data: blocks } = await supabase
       .from('line_blocks')
-      .select('id, order_index, speaker_name, text_raw, section_id')
+      .select('id, order_index, speaker_name, text_raw, section_id, scene_id')
       .eq('scene_id', CANONICAL_SCENE_ID)
       .eq('section_id', selectedSectionId)
       .order('order_index');
@@ -161,8 +180,6 @@ const AdminTranslationEditor = () => {
     }));
 
     setLineBlocks(result);
-    // Clear edits when data reloads (but keep any pending edits)
-    // Actually, don't clear - user might be in the middle of editing
     setLoading(false);
   }, [selectedSectionId, selectedStyle]);
 
@@ -191,9 +208,8 @@ const AdminTranslationEditor = () => {
     return session.access_token;
   }, []);
 
-  // Auto-save function
+  // Save translation
   const saveTranslation = useCallback(async (lineblockId: string, text: string) => {
-    
     setSaving(prev => new Set(prev).add(lineblockId));
     setSaveStatus(prev => {
       const next = new Map(prev);
@@ -226,7 +242,6 @@ const AdminTranslationEditor = () => {
         throw new Error('Failed to save');
       }
 
-      // Update local state without refetching
       setLineBlocks(prev => prev.map(lb => 
         lb.id === lineblockId 
           ? { 
@@ -242,8 +257,7 @@ const AdminTranslationEditor = () => {
           : lb
       ));
       
-      // Clear edit from pending edits
-      setEdits(prev => {
+      setTranslationEdits(prev => {
         const next = new Map(prev);
         next.delete(lineblockId);
         return next;
@@ -251,7 +265,6 @@ const AdminTranslationEditor = () => {
       
       setSaveStatus(prev => new Map(prev).set(lineblockId, 'saved'));
       
-      // Clear saved status after 2 seconds
       setTimeout(() => {
         setSaveStatus(prev => {
           const next = new Map(prev);
@@ -283,38 +296,133 @@ const AdminTranslationEditor = () => {
     }
   }, [getValidAccessToken, navigate, selectedStyle]);
 
-  // Handle text change with auto-save
-  const handleTextChange = useCallback((lineblockId: string, text: string) => {
-    setEdits(prev => new Map(prev).set(lineblockId, text));
+  // Save raw text
+  const saveRawText = useCallback(async (lineblockId: string, text: string) => {
+    const savingKey = `raw-${lineblockId}`;
+    setSaving(prev => new Set(prev).add(savingKey));
+    setSaveStatus(prev => {
+      const next = new Map(prev);
+      next.delete(savingKey);
+      return next;
+    });
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const block = lineBlocks.find(lb => lb.id === lineblockId);
+      const oldText = block?.text_raw || '';
+
+      const { error } = await supabase
+        .from('line_blocks')
+        .update({ text_raw: text })
+        .eq('id', lineblockId);
+
+      if (error) throw error;
+
+      // Log audit
+      await supabase.from('lineblock_edit_audit').insert({
+        lineblock_id: lineblockId,
+        action: 'edit',
+        field_name: 'text_raw',
+        old_value: oldText,
+        new_value: text,
+        reason: 'Manual edit in translation editor',
+        changed_by: user.id,
+      });
+
+      setLineBlocks(prev => prev.map(lb => 
+        lb.id === lineblockId ? { ...lb, text_raw: text } : lb
+      ));
+      
+      setRawTextEdits(prev => {
+        const next = new Map(prev);
+        next.delete(lineblockId);
+        return next;
+      });
+      
+      setSaveStatus(prev => new Map(prev).set(savingKey, 'saved'));
+      
+      setTimeout(() => {
+        setSaveStatus(prev => {
+          const next = new Map(prev);
+          if (next.get(savingKey) === 'saved') {
+            next.delete(savingKey);
+          }
+          return next;
+        });
+      }, 2000);
+      
+    } catch (error: any) {
+      setSaveStatus(prev => new Map(prev).set(savingKey, 'error'));
+      toast.error('Failed to save raw text');
+    } finally {
+      setSaving(prev => {
+        const next = new Set(prev);
+        next.delete(savingKey);
+        return next;
+      });
+    }
+  }, [lineBlocks]);
+
+  // Handle translation text change with auto-save
+  const handleTranslationChange = useCallback((lineblockId: string, text: string) => {
+    setTranslationEdits(prev => new Map(prev).set(lineblockId, text));
     
-    // Clear any existing timer
-    const existingTimer = saveTimers.current.get(lineblockId);
+    const existingTimer = translationTimers.current.get(lineblockId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
     
-    // Set new auto-save timer
     const timer = setTimeout(() => {
       saveTranslation(lineblockId, text);
-      saveTimers.current.delete(lineblockId);
+      translationTimers.current.delete(lineblockId);
     }, AUTO_SAVE_DELAY);
     
-    saveTimers.current.set(lineblockId, timer);
+    translationTimers.current.set(lineblockId, timer);
   }, [saveTranslation]);
 
-  // Manual save (for immediate save)
-  const handleManualSave = useCallback((lineblockId: string) => {
-    const text = edits.get(lineblockId);
+  // Handle raw text change with auto-save
+  const handleRawTextChange = useCallback((lineblockId: string, text: string) => {
+    setRawTextEdits(prev => new Map(prev).set(lineblockId, text));
+    
+    const existingTimer = rawTextTimers.current.get(lineblockId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    
+    const timer = setTimeout(() => {
+      saveRawText(lineblockId, text);
+      rawTextTimers.current.delete(lineblockId);
+    }, AUTO_SAVE_DELAY);
+    
+    rawTextTimers.current.set(lineblockId, timer);
+  }, [saveRawText]);
+
+  // Manual save functions
+  const handleManualSaveTranslation = useCallback((lineblockId: string) => {
+    const text = translationEdits.get(lineblockId);
     if (text !== undefined) {
-      // Clear any pending auto-save
-      const existingTimer = saveTimers.current.get(lineblockId);
+      const existingTimer = translationTimers.current.get(lineblockId);
       if (existingTimer) {
         clearTimeout(existingTimer);
-        saveTimers.current.delete(lineblockId);
+        translationTimers.current.delete(lineblockId);
       }
       saveTranslation(lineblockId, text);
     }
-  }, [edits, saveTranslation]);
+  }, [translationEdits, saveTranslation]);
+
+  const handleManualSaveRawText = useCallback((lineblockId: string) => {
+    const text = rawTextEdits.get(lineblockId);
+    if (text !== undefined) {
+      const existingTimer = rawTextTimers.current.get(lineblockId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        rawTextTimers.current.delete(lineblockId);
+      }
+      saveRawText(lineblockId, text);
+    }
+  }, [rawTextEdits, saveRawText]);
 
   // Regenerate translation
   const handleRegenerate = useCallback(async (lineblockId: string) => {
@@ -344,7 +452,6 @@ const AdminTranslationEditor = () => {
 
       toast.success("Translation regenerated");
 
-      // Refetch just this block's translation
       const { data: newTrans } = await supabase
         .from('lineblock_translations')
         .select('id, lineblock_id, translation_text, status, review_status')
@@ -358,8 +465,7 @@ const AdminTranslationEditor = () => {
             ? { ...lb, translation: newTrans }
             : lb
         ));
-        // Clear any pending edit
-        setEdits(prev => {
+        setTranslationEdits(prev => {
           const next = new Map(prev);
           next.delete(lineblockId);
           return next;
@@ -384,18 +490,245 @@ const AdminTranslationEditor = () => {
     }
   }, [getValidAccessToken, navigate, selectedStyle]);
 
+  // Get adjacent blocks
+  const getPrevBlock = useCallback(() => {
+    if (!selectedBlock) return null;
+    const idx = lineBlocks.findIndex(b => b.id === selectedBlock.id);
+    return idx > 0 ? lineBlocks[idx - 1] : null;
+  }, [selectedBlock, lineBlocks]);
+
+  const getNextBlock = useCallback(() => {
+    if (!selectedBlock) return null;
+    const idx = lineBlocks.findIndex(b => b.id === selectedBlock.id);
+    return idx < lineBlocks.length - 1 ? lineBlocks[idx + 1] : null;
+  }, [selectedBlock, lineBlocks]);
+
+  // SPLIT operation
+  const handleSplit = async () => {
+    if (!selectedBlock || splitPosition <= 0 || splitPosition >= selectedBlock.text_raw.length) {
+      toast.error('Invalid split position');
+      return;
+    }
+
+    setSplitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const textBefore = selectedBlock.text_raw.slice(0, splitPosition).trim();
+      const textAfter = selectedBlock.text_raw.slice(splitPosition).trim();
+
+      // Get all blocks in the same section with order_index > current
+      const { data: laterBlocks } = await supabase
+        .from('line_blocks')
+        .select('id, order_index')
+        .eq('scene_id', selectedBlock.scene_id)
+        .eq('section_id', selectedBlock.section_id)
+        .gt('order_index', selectedBlock.order_index)
+        .order('order_index', { ascending: false });
+
+      // Increment order_index for later blocks to make room
+      for (const block of (laterBlocks || [])) {
+        await supabase
+          .from('line_blocks')
+          .update({ order_index: block.order_index + 1 })
+          .eq('id', block.id);
+      }
+
+      // Update original block with first part
+      await supabase
+        .from('line_blocks')
+        .update({ text_raw: textBefore })
+        .eq('id', selectedBlock.id);
+
+      // Create new block with second part
+      const newSpeaker = newBlockSpeaker.trim() || selectedBlock.speaker_name;
+      const { data: newBlock } = await supabase
+        .from('line_blocks')
+        .insert({
+          scene_id: selectedBlock.scene_id,
+          section_id: selectedBlock.section_id,
+          speaker_name: newSpeaker,
+          text_raw: textAfter,
+          order_index: selectedBlock.order_index + 1,
+        })
+        .select()
+        .single();
+
+      // Log audit for both blocks
+      await supabase.from('lineblock_edit_audit').insert([
+        {
+          lineblock_id: selectedBlock.id,
+          action: 'split',
+          field_name: 'text_raw',
+          old_value: selectedBlock.text_raw,
+          new_value: textBefore,
+          reason: 'Split operation - kept first part',
+          changed_by: user.id,
+        },
+        {
+          lineblock_id: newBlock?.id,
+          action: 'split',
+          field_name: 'text_raw',
+          old_value: null,
+          new_value: textAfter,
+          reason: 'Split operation - new block with second part',
+          changed_by: user.id,
+        },
+      ]);
+
+      // Invalidate translations for affected blocks
+      const blockIdsToInvalidate = [selectedBlock.id];
+      if (newBlock) blockIdsToInvalidate.push(newBlock.id);
+      
+      await supabase
+        .from('lineblock_translations')
+        .upsert(
+          blockIdsToInvalidate.map(id => ({
+            lineblock_id: id,
+            style: selectedStyle,
+            status: 'missing',
+            review_status: 'needs_review',
+            translation_text: null,
+            source: 'ai',
+          })),
+          { onConflict: 'lineblock_id,style' }
+        );
+
+      toast.success('Block split successfully');
+      setShowSplitDialog(false);
+      setSelectedBlock(null);
+      setNewBlockSpeaker("");
+      setSplitPosition(0);
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to split');
+    } finally {
+      setSplitting(false);
+    }
+  };
+
+  // MERGE operation
+  const handleMerge = async () => {
+    if (!selectedBlock || !mergeTarget) return;
+
+    const targetBlock = mergeTarget === 'prev' ? getPrevBlock() : getNextBlock();
+    if (!targetBlock) {
+      toast.error('No adjacent block to merge with');
+      return;
+    }
+
+    setMerging(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Determine which block comes first
+      const firstBlock = mergeTarget === 'prev' ? targetBlock : selectedBlock;
+      const secondBlock = mergeTarget === 'prev' ? selectedBlock : targetBlock;
+      
+      const mergedText = `${firstBlock.text_raw}\n${secondBlock.text_raw}`;
+
+      // Update first block with merged text
+      await supabase
+        .from('line_blocks')
+        .update({ text_raw: mergedText })
+        .eq('id', firstBlock.id);
+
+      // Log audit before deleting second block
+      await supabase.from('lineblock_edit_audit').insert({
+        lineblock_id: firstBlock.id,
+        action: 'merge',
+        field_name: 'text_raw',
+        old_value: firstBlock.text_raw,
+        new_value: mergedText,
+        reason: `Merged with block #${secondBlock.order_index}`,
+        changed_by: user.id,
+      });
+
+      // Delete the second block
+      await supabase
+        .from('line_blocks')
+        .delete()
+        .eq('id', secondBlock.id);
+
+      // Reindex remaining blocks in section
+      const { data: remainingBlocks } = await supabase
+        .from('line_blocks')
+        .select('id, order_index')
+        .eq('scene_id', selectedBlock.scene_id)
+        .eq('section_id', selectedBlock.section_id)
+        .order('order_index');
+
+      for (let i = 0; i < (remainingBlocks || []).length; i++) {
+        const block = remainingBlocks![i];
+        if (block.order_index !== i) {
+          await supabase
+            .from('line_blocks')
+            .update({ order_index: i })
+            .eq('id', block.id);
+        }
+      }
+
+      // Invalidate translation for merged block
+      await supabase
+        .from('lineblock_translations')
+        .upsert({
+          lineblock_id: firstBlock.id,
+          style: selectedStyle,
+          status: 'missing',
+          review_status: 'needs_review',
+          translation_text: null,
+          source: 'ai',
+        }, { onConflict: 'lineblock_id,style' });
+
+      toast.success('Blocks merged successfully');
+      setShowMergeDialog(false);
+      setSelectedBlock(null);
+      setMergeTarget(null);
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to merge');
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  // Open split dialog
+  const openSplitDialog = (block: LineBlockWithTranslation) => {
+    setSelectedBlock(block);
+    setSplitPosition(Math.floor(block.text_raw.length / 2));
+    setNewBlockSpeaker("");
+    setShowSplitDialog(true);
+  };
+
+  // Open merge dialog
+  const openMergeDialog = (block: LineBlockWithTranslation) => {
+    setSelectedBlock(block);
+    setMergeTarget(null);
+    setShowMergeDialog(true);
+  };
+
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
-      saveTimers.current.forEach(timer => clearTimeout(timer));
+      translationTimers.current.forEach(timer => clearTimeout(timer));
+      rawTextTimers.current.forEach(timer => clearTimeout(timer));
     };
   }, []);
 
-  const getDisplayText = (lb: LineBlockWithTranslation) => {
-    if (edits.has(lb.id)) {
-      return edits.get(lb.id) || '';
+  const getTranslationDisplayText = (lb: LineBlockWithTranslation) => {
+    if (translationEdits.has(lb.id)) {
+      return translationEdits.get(lb.id) || '';
     }
     return lb.translation?.translation_text || '';
+  };
+
+  const getRawTextDisplayText = (lb: LineBlockWithTranslation) => {
+    if (rawTextEdits.has(lb.id)) {
+      return rawTextEdits.get(lb.id) || '';
+    }
+    return lb.text_raw;
   };
 
   if (loading && lineBlocks.length === 0) {
@@ -456,9 +789,13 @@ const AdminTranslationEditor = () => {
           <div className="space-y-4">
             {lineBlocks.map((lb) => {
               const isSaving = saving.has(lb.id);
+              const isRawSaving = saving.has(`raw-${lb.id}`);
               const status = saveStatus.get(lb.id);
-              const hasEdit = edits.has(lb.id);
-              const translationText = getDisplayText(lb);
+              const rawStatus = saveStatus.get(`raw-${lb.id}`);
+              const hasTranslationEdit = translationEdits.has(lb.id);
+              const hasRawEdit = rawTextEdits.has(lb.id);
+              const translationText = getTranslationDisplayText(lb);
+              const rawText = getRawTextDisplayText(lb);
               const isMissing = !lb.translation || lb.translation.status === 'missing';
               
               return (
@@ -466,19 +803,67 @@ const AdminTranslationEditor = () => {
                   key={lb.id} 
                   className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-card hover:border-primary/30 transition-colors"
                 >
-                  {/* Left column: Original text */}
+                  {/* Left column: Original text (editable) */}
                   <div className="space-y-2 flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs font-mono">
-                        #{lb.order_index}
-                      </Badge>
-                      <Badge variant="secondary" className="text-xs">
-                        {lb.speaker_name}
-                      </Badge>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs font-mono">
+                          #{lb.order_index}
+                        </Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {lb.speaker_name}
+                        </Badge>
+                        {isRawSaving && (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                        )}
+                        {rawStatus === 'saved' && (
+                          <CheckCircle className="h-3 w-3 text-green-500" />
+                        )}
+                        {rawStatus === 'error' && (
+                          <AlertCircle className="h-3 w-3 text-destructive" />
+                        )}
+                        {hasRawEdit && !isRawSaving && (
+                          <span className="text-xs text-amber-500">unsaved</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {hasRawEdit && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 px-2 text-xs"
+                            onClick={() => handleManualSaveRawText(lb.id)}
+                            disabled={isRawSaving}
+                          >
+                            <Save className="h-3 w-3 mr-1" />
+                            Save
+                          </Button>
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2 text-xs"
+                          onClick={() => openSplitDialog(lb)}
+                          title="Split line"
+                        >
+                          <Scissors className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2 text-xs"
+                          onClick={() => openMergeDialog(lb)}
+                          title="Merge with adjacent"
+                        >
+                          <Combine className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="font-serif text-sm leading-relaxed whitespace-pre-wrap text-foreground/90 flex-1">
-                      {lb.text_raw}
-                    </div>
+                    <Textarea
+                      value={rawText}
+                      onChange={(e) => handleRawTextChange(lb.id, e.target.value)}
+                      className="flex-1 min-h-[60px] text-sm resize-none font-serif"
+                    />
                   </div>
                   
                   {/* Right column: Translation (editable) */}
@@ -495,17 +880,17 @@ const AdminTranslationEditor = () => {
                         {status === 'error' && (
                           <AlertCircle className="h-3 w-3 text-destructive" />
                         )}
-                        {hasEdit && !isSaving && (
+                        {hasTranslationEdit && !isSaving && (
                           <span className="text-xs text-amber-500">unsaved</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        {hasEdit && (
+                        {hasTranslationEdit && (
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             className="h-6 px-2 text-xs"
-                            onClick={() => handleManualSave(lb.id)}
+                            onClick={() => handleManualSaveTranslation(lb.id)}
                             disabled={isSaving}
                           >
                             <Save className="h-3 w-3 mr-1" />
@@ -526,7 +911,7 @@ const AdminTranslationEditor = () => {
                     </div>
                     <Textarea
                       value={translationText}
-                      onChange={(e) => handleTextChange(lb.id, e.target.value)}
+                      onChange={(e) => handleTranslationChange(lb.id, e.target.value)}
                       placeholder={isMissing ? "No translation yet. Type here or click Regen..." : ""}
                       className={`flex-1 min-h-[60px] text-sm resize-none ${isMissing ? 'border-amber-500/50' : ''}`}
                     />
@@ -543,6 +928,147 @@ const AdminTranslationEditor = () => {
           </div>
         </div>
       </ScrollArea>
+
+      {/* Split Dialog */}
+      <Dialog open={showSplitDialog} onOpenChange={setShowSplitDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="w-5 h-5" />
+              Split Line Block
+            </DialogTitle>
+            <DialogDescription>
+              Split this line block at the cursor position
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedBlock && (
+            <div className="space-y-4">
+              <div>
+                <Label>Original Text</Label>
+                <div className="p-3 border rounded bg-muted text-sm font-serif whitespace-pre-wrap">
+                  {selectedBlock.text_raw}
+                </div>
+              </div>
+              
+              <div>
+                <Label>Split Position (character index)</Label>
+                <Input
+                  type="number"
+                  value={splitPosition}
+                  onChange={(e) => setSplitPosition(Number(e.target.value))}
+                  min={1}
+                  max={selectedBlock.text_raw.length - 1}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>First Part (stays with #{selectedBlock.order_index})</Label>
+                  <div className="p-3 border rounded bg-muted text-sm font-serif">
+                    {selectedBlock.text_raw.slice(0, splitPosition)}
+                  </div>
+                </div>
+                <div>
+                  <Label>Second Part (new block)</Label>
+                  <div className="p-3 border rounded bg-muted text-sm font-serif">
+                    {selectedBlock.text_raw.slice(splitPosition)}
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <Label>Speaker for New Block (leave empty to keep same)</Label>
+                <Input
+                  value={newBlockSpeaker}
+                  onChange={(e) => setNewBlockSpeaker(e.target.value)}
+                  placeholder={selectedBlock.speaker_name}
+                />
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSplitDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSplit} disabled={splitting}>
+              {splitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Split Block
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Merge Dialog */}
+      <Dialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Combine className="w-5 h-5" />
+              Merge Line Blocks
+            </DialogTitle>
+            <DialogDescription>
+              Choose which adjacent block to merge with
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedBlock && (
+            <div className="space-y-4">
+              <div>
+                <Label>Current Block (#{selectedBlock.order_index})</Label>
+                <div className="p-3 border rounded bg-muted text-sm font-serif">
+                  <span className="font-bold">{selectedBlock.speaker_name}:</span> {selectedBlock.text_raw}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                {getPrevBlock() && (
+                  <Button
+                    variant={mergeTarget === 'prev' ? 'default' : 'outline'}
+                    onClick={() => setMergeTarget('prev')}
+                    className="h-auto py-3 flex flex-col items-start text-left"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <ChevronUp className="w-4 h-4" />
+                      <span>Merge with Previous</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground line-clamp-2">
+                      #{getPrevBlock()!.order_index}: {getPrevBlock()!.text_raw.slice(0, 50)}...
+                    </span>
+                  </Button>
+                )}
+                
+                {getNextBlock() && (
+                  <Button
+                    variant={mergeTarget === 'next' ? 'default' : 'outline'}
+                    onClick={() => setMergeTarget('next')}
+                    className="h-auto py-3 flex flex-col items-start text-left"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <ChevronDown className="w-4 h-4" />
+                      <span>Merge with Next</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground line-clamp-2">
+                      #{getNextBlock()!.order_index}: {getNextBlock()!.text_raw.slice(0, 50)}...
+                    </span>
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMergeDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleMerge} disabled={merging || !mergeTarget}>
+              {merging && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Merge Blocks
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
