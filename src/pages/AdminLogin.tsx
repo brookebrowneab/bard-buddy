@@ -29,7 +29,7 @@ const AdminLogin = () => {
           .single();
 
         if (roleData) {
-          navigate('/admin/translations');
+          navigate('/admin');
         }
       }
       setCheckingAuth(false);
@@ -75,7 +75,7 @@ const AdminLogin = () => {
 
         if (roleData) {
           toast.success("Welcome back, admin!");
-          navigate('/admin/translations');
+          navigate('/admin');
         } else {
           toast.error("You don't have admin access");
           await supabase.auth.signOut();
