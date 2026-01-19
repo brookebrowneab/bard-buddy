@@ -10,9 +10,11 @@ const PROMPT_VERSION = "gpt5_v1";
 const MODEL = "openai/gpt-5";
 const STYLE = "plain_english_gpt5";
 
-// GPT-5 uses reasoning tokens before producing output (seen ~800 reasoning tokens).
-// We need enough headroom for reasoning PLUS the actual translation output.
-const MAX_COMPLETION_TOKENS = 2000;
+// Threshold for "too long" blocks - skip OpenAI and flag for manual split
+const MAX_CHAR_LENGTH = 1200;
+
+// For normal blocks: keep output concise
+const MAX_OUTPUT_TOKENS = 200;
 
 // Keep batches smaller to reduce timeouts when using high-capability models.
 const MAX_LINES_PER_REQUEST = 5;
@@ -151,8 +153,59 @@ serve(async (req) => {
     // Process all lines in this batch in parallel
     let processed = 0;
     let errors = 0;
+    let skippedTooLong = 0;
+    const errorDetails: string[] = [];
 
     const batchPromises = blocksToProcess.map(async (block) => {
+      const charLen = block.text_raw?.length || 0;
+      
+      // Check if block is too long - skip OpenAI and create issue
+      if (charLen > MAX_CHAR_LENGTH) {
+        try {
+          // Check if issue already exists
+          const { data: existingIssue } = await supabase
+            .from('script_issues')
+            .select('id')
+            .eq('lineblock_id', block.id)
+            .eq('issue_type', 'needs_split')
+            .single();
+
+          if (!existingIssue) {
+            // Create script_issues record
+            await supabase
+              .from('script_issues')
+              .insert({
+                lineblock_id: block.id,
+                issue_type: 'needs_split',
+                note: `Block has ${charLen} characters (threshold: ${MAX_CHAR_LENGTH}). Needs manual split before translation.`,
+                status: 'open',
+                created_by: user.id,
+              });
+          }
+
+          // Set translation as failed with specific error
+          await supabase
+            .from('lineblock_translations')
+            .upsert({
+              lineblock_id: block.id,
+              style: STYLE,
+              status: 'failed',
+              error: `Block too long (${charLen} chars); split required`,
+              source: 'ai',
+              review_status: 'needs_review',
+              model: MODEL,
+              prompt_version: PROMPT_VERSION,
+            }, {
+              onConflict: 'lineblock_id,style',
+            });
+
+          return { success: false, skippedTooLong: true };
+        } catch (err) {
+          console.error(`Error handling oversized block ${block.id}:`, err);
+          return { success: false, error: 'Failed to create issue for oversized block' };
+        }
+      }
+
       try {
         // Mark as pending
         await supabase
@@ -169,7 +222,7 @@ serve(async (req) => {
             onConflict: 'lineblock_id,style',
           });
 
-        // Call Lovable AI Gateway
+        // Call Lovable AI Gateway with lower temperature and output limit
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -182,22 +235,30 @@ serve(async (req) => {
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: `Translate this Shakespearean line to modern English:\n\n"${block.text_raw}"` },
             ],
-            max_completion_tokens: MAX_COMPLETION_TOKENS,
-            // GPT-5 only supports temperature=1
-            temperature: 1,
+            max_completion_tokens: MAX_OUTPUT_TOKENS,
+            temperature: 0.2,
           }),
         });
 
         if (!aiResponse.ok) {
           const errorBody = await aiResponse.text();
           console.error(`AI API error ${aiResponse.status}:`, errorBody);
+          
+          let errorMessage: string;
           if (aiResponse.status === 429) {
-            throw new Error('Rate limit exceeded - please try again later');
+            errorMessage = 'Rate limit exceeded - please try again later';
+          } else if (aiResponse.status === 402) {
+            errorMessage = 'Payment required - please add credits to your workspace';
+          } else {
+            // Try to parse error body for more details
+            try {
+              const parsed = JSON.parse(errorBody);
+              errorMessage = parsed.error?.message || parsed.message || `API error ${aiResponse.status}`;
+            } catch {
+              errorMessage = `AI API error: ${aiResponse.status} - ${errorBody.slice(0, 200)}`;
+            }
           }
-          if (aiResponse.status === 402) {
-            throw new Error('Payment required - please add credits to your workspace');
-          }
-          throw new Error(`AI API error: ${aiResponse.status} - ${errorBody.slice(0, 200)}`);
+          throw new Error(errorMessage);
         }
 
         const aiData = await aiResponse.json();
@@ -262,7 +323,13 @@ serve(async (req) => {
 
     const results = await Promise.all(batchPromises);
     processed = results.filter(r => r.success).length;
-    errors = results.filter(r => !r.success).length;
+    errors = results.filter(r => !r.success && !r.skippedTooLong).length;
+    skippedTooLong = results.filter(r => r.skippedTooLong).length;
+    
+    // Collect error details for diagnostics
+    results.forEach(r => {
+      if (r.error) errorDetails.push(r.error);
+    });
 
     return new Response(JSON.stringify({ 
       success: true,
@@ -272,8 +339,10 @@ serve(async (req) => {
       already_complete: existingIds.size,
       processed,
       errors,
+      skipped_too_long: skippedTooLong,
       has_more: hasMore,
-      remaining: missingBlocks.length - processed,
+      remaining: missingBlocks.length - blocksToProcess.length,
+      error_details: errorDetails.slice(0, 5), // Return first 5 errors for diagnostics
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

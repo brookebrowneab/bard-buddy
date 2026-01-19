@@ -34,6 +34,7 @@ interface Gpt5Stats {
   completed: number;
   pending: number;
   error: number;
+  tooLong: number;
 }
 
 const AdminTranslations = () => {
@@ -44,7 +45,7 @@ const AdminTranslations = () => {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [stats, setStats] = useState<TranslationStats>({ total: 0, completed: 0, pending: 0, error: 0 });
-  const [gpt5Stats, setGpt5Stats] = useState<Gpt5Stats>({ completed: 0, pending: 0, error: 0 });
+  const [gpt5Stats, setGpt5Stats] = useState<Gpt5Stats>({ completed: 0, pending: 0, error: 0, tooLong: 0 });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatingGpt52, setGeneratingGpt52] = useState(false);
@@ -57,15 +58,19 @@ const AdminTranslations = () => {
   const [gpt5Diagnostics, setGpt5Diagnostics] = useState<{
     lastBatchProcessed: number;
     lastBatchErrors: number;
+    lastSkippedTooLong: number;
     lastResponse: any;
     lastError: string | null;
     lastRunTime: string | null;
+    errorDetails: string[];
   }>({
     lastBatchProcessed: 0,
     lastBatchErrors: 0,
+    lastSkippedTooLong: 0,
     lastResponse: null,
     lastError: null,
     lastRunTime: null,
+    errorDetails: [],
   });
 
   // Check admin status
@@ -172,7 +177,7 @@ const AdminTranslations = () => {
 
     if (total === 0) {
       setStats({ total: 0, completed: 0, pending: 0, error: 0 });
-      setGpt5Stats({ completed: 0, pending: 0, error: 0 });
+      setGpt5Stats({ completed: 0, pending: 0, error: 0, tooLong: 0 });
       return;
     }
 
@@ -221,11 +226,17 @@ const AdminTranslations = () => {
       "failed"
     );
 
+    // Count "too long" blocks that need split (error contains "too long" or "split required")
+    const { count: gpt5TooLongCount } = await makeTranslationCountQuery("plain_english_gpt5")
+      .eq("status", "failed")
+      .ilike("error", "%split required%");
+
     const gpt5Completed = gpt5CompletedCount ?? 0;
     const gpt5Error = gpt5ErrorCount ?? 0;
+    const gpt5TooLong = gpt5TooLongCount ?? 0;
     const gpt5Pending = Math.max(0, total - gpt5Completed - gpt5Error);
 
-    setGpt5Stats({ completed: gpt5Completed, pending: gpt5Pending, error: gpt5Error });
+    setGpt5Stats({ completed: gpt5Completed, pending: gpt5Pending, error: gpt5Error, tooLong: gpt5TooLong });
   };
 
   useEffect(() => {
@@ -351,9 +362,11 @@ const AdminTranslations = () => {
         setGpt5Diagnostics({
           lastBatchProcessed: result.processed || 0,
           lastBatchErrors: result.errors || 0,
+          lastSkippedTooLong: result.skipped_too_long || 0,
           lastResponse: result,
           lastError: response.ok ? null : (result.error || `HTTP ${response.status}`),
           lastRunTime: new Date().toISOString(),
+          errorDetails: result.error_details || [],
         });
         
         if (!response.ok) throw new Error(result.error);
@@ -376,6 +389,7 @@ const AdminTranslations = () => {
         ...prev,
         lastError: error.message || 'Unknown error',
         lastRunTime: new Date().toISOString(),
+        errorDetails: [error.message || 'Unknown error'],
       }));
       toast.error(error.message || 'Failed to generate GPT-5 translations');
     } finally {
@@ -647,6 +661,12 @@ const AdminTranslations = () => {
                         Errors: {gpt5Stats.error}
                       </Badge>
                     )}
+                    {gpt5Stats.tooLong > 0 && (
+                      <Badge variant="outline" className="gap-1 border-orange-500 text-orange-600">
+                        <TriangleAlert className="w-3 h-3" />
+                        Too Long: {gpt5Stats.tooLong}
+                      </Badge>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -719,20 +739,35 @@ const AdminTranslations = () => {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Last Batch:</span>
-                      <p>
-                        <Badge variant="secondary" className="mr-1">{gpt5Diagnostics.lastBatchProcessed} processed</Badge>
+                      <p className="flex flex-wrap gap-1">
+                        <Badge variant="secondary">{gpt5Diagnostics.lastBatchProcessed} processed</Badge>
                         {gpt5Diagnostics.lastBatchErrors > 0 && (
                           <Badge variant="destructive">{gpt5Diagnostics.lastBatchErrors} errors</Badge>
+                        )}
+                        {gpt5Diagnostics.lastSkippedTooLong > 0 && (
+                          <Badge variant="outline" className="border-orange-500 text-orange-600">
+                            {gpt5Diagnostics.lastSkippedTooLong} too long
+                          </Badge>
                         )}
                       </p>
                     </div>
                   </div>
                   
-                  {gpt5Diagnostics.lastError && (
+                  {(gpt5Diagnostics.lastError || gpt5Diagnostics.errorDetails.length > 0) && (
                     <Alert variant="destructive">
                       <AlertCircle className="h-4 w-4" />
-                      <AlertDescription className="font-mono text-xs break-all">
-                        {gpt5Diagnostics.lastError}
+                      <AlertDescription className="font-mono text-xs break-all space-y-1">
+                        {gpt5Diagnostics.lastError && <div>{gpt5Diagnostics.lastError}</div>}
+                        {gpt5Diagnostics.errorDetails.length > 0 && (
+                          <div className="mt-2">
+                            <strong>Recent errors:</strong>
+                            <ul className="list-disc list-inside">
+                              {gpt5Diagnostics.errorDetails.map((err, i) => (
+                                <li key={i}>{err}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </AlertDescription>
                     </Alert>
                   )}
