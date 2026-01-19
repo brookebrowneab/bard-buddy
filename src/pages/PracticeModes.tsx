@@ -34,14 +34,15 @@ const practiceModes: PracticeModeOption[] = [
     icon: <Shuffle className="w-6 h-6" />,
     path: "/practice/scramble"
   },
-  {
-    id: "plain-english",
-    title: "Plain English → Shakespeare",
-    description: "Read the modern meaning, then recall the Bard's words",
-    icon: <Languages className="w-6 h-6" />,
-    path: "/modern-english-viewer",
-    requiresHint: true
-  }
+  // Plain English game temporarily hidden until fully functional
+  // {
+  //   id: "plain-english",
+  //   title: "Plain English → Shakespeare",
+  //   description: "Read the modern meaning, then recall the Bard's words",
+  //   icon: <Languages className="w-6 h-6" />,
+  //   path: "/modern-english-viewer",
+  //   requiresHint: true
+  // }
 ];
 
 const PracticeModes = () => {
