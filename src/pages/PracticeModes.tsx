@@ -55,14 +55,14 @@ const PracticeModes = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       {/* Header */}
-      <header className="px-6 pt-8 pb-4 text-center">
+      <header className="px-4 md:px-6 pt-8 pb-4 text-center">
         <div className="inline-flex items-center gap-2 text-primary mb-2">
           <Drama className="w-6 h-6" />
           <span className="font-serif text-sm uppercase tracking-wide">Shakespeare Lines</span>
         </div>
-        <h1 className="font-serif text-2xl font-bold text-foreground">
+        <h1 className="font-serif text-xl md:text-2xl font-bold text-foreground">
           How Would You Like to Practice?
         </h1>
         <p className="text-muted-foreground mt-2 text-sm">
@@ -71,24 +71,24 @@ const PracticeModes = () => {
       </header>
 
       {/* Practice Mode Options */}
-      <main className="flex-1 px-6 py-8">
-        <div className="max-w-md mx-auto space-y-4">
+      <main className="flex-1 px-4 md:px-6 py-6 md:py-8 overflow-x-hidden">
+        <div className="max-w-md mx-auto space-y-3 md:space-y-4 w-full">
           {practiceModes.map((mode) => (
             <Button
               key={mode.id}
               variant="practice"
-              className="w-full py-8"
+              className="w-full py-5 md:py-8 h-auto"
               onClick={() => handleModeSelect(mode)}
             >
-              <div className="flex items-center gap-5 w-full">
-                <div className="w-16 h-16 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+              <div className="flex items-center gap-3 md:gap-5 w-full">
+                <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
                   {mode.icon}
                 </div>
                 <div className="flex-1 min-w-0 text-left">
-                  <h2 className="font-semibold text-foreground text-lg mb-1">
+                  <h2 className="font-semibold text-foreground text-base md:text-lg mb-1 break-words">
                     {mode.title}
                   </h2>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
+                  <p className="text-xs md:text-sm text-muted-foreground leading-relaxed">
                     {mode.description}
                   </p>
                 </div>

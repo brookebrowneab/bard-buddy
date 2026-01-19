@@ -78,15 +78,15 @@ const RolePicker = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       {/* Header */}
       <header className="px-4 pt-6 pb-4">
         <AppBreadcrumbs className="mb-4" />
-        <h1 className="font-serif text-2xl font-bold text-foreground text-center">
+        <h1 className="font-serif text-xl md:text-2xl font-bold text-foreground text-center">
           Who Are You Playing?
         </h1>
         {productionTitle && (
-          <p className="text-center text-primary font-medium mt-1">
+          <p className="text-center text-primary font-medium mt-1 text-sm md:text-base break-words">
             {productionTitle}
           </p>
         )}
@@ -96,8 +96,8 @@ const RolePicker = () => {
       </header>
 
       {/* Character List */}
-      <main className="flex-1 px-6 py-4 overflow-y-auto">
-        <div className="max-w-sm mx-auto space-y-3">
+      <main className="flex-1 px-4 md:px-6 py-4 overflow-y-auto overflow-x-hidden">
+        <div className="max-w-sm mx-auto space-y-3 w-full">
           {characters.length === 0 ? (
             <div className="text-center py-8">
               <User className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -121,23 +121,23 @@ const RolePicker = () => {
                   key={character}
                   onClick={() => handleRoleSelect(character)}
                   className={`
-                    w-full p-5 rounded-lg border-2 text-left transition-all duration-200
-                    flex items-center justify-between
+                    w-full p-4 md:p-5 rounded-lg border-2 text-left transition-all duration-200
+                    flex items-center justify-between gap-2
                     ${isSelected 
                       ? "border-primary bg-primary/5 shadow-md" 
                       : "border-border bg-card hover:border-primary/50 hover:shadow-sm"
                     }
                   `}
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
                     <div className={`
-                      w-12 h-12 rounded-full flex items-center justify-center
+                      w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center flex-shrink-0
                       ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}
                     `}>
-                      <User className="w-6 h-6" />
+                      <User className="w-5 h-5 md:w-6 md:h-6" />
                     </div>
-                    <div>
-                      <h2 className="font-serif text-xl font-semibold text-foreground">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-serif text-lg md:text-xl font-semibold text-foreground break-words">
                         {character}
                       </h2>
                     </div>
