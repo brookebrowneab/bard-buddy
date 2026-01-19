@@ -55,6 +55,16 @@ interface BlockDiagnostic {
   finish_reason?: string;
   extracted_text_length?: number;
   extracted_text_preview?: string; // first 120 chars for debugging
+  raw_debug?: {
+    raw_keys: string[];
+    has_output_text: boolean;
+    has_choices: boolean;
+    has_output_array: boolean;
+    preview_output_text?: string;
+    preview_extracted_text?: string;
+    preview_choices_content?: string;
+    preview_output_content?: string;
+  };
   error?: {
     http_status?: number;
     type?: string;
@@ -285,22 +295,24 @@ serve(async (req) => {
 
         console.log(`[START] Block ${block.id}: text=${textCharLen}chars, prompt=${promptCharLen}chars, max_tokens=${currentMaxTokens}, model=${MODEL}`);
 
-        // Build request payload - conditionally include temperature
+        // Build request payload - explicitly disable streaming, and conditionally include temperature
         const buildPayload = (maxTokens: number, includeSamplingParams: boolean) => {
           const payload: any = {
             model: MODEL,
+            // Ensure non-streaming responses (avoid SSE parsing mismatches)
+            stream: false,
             messages: [
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: userPrompt },
             ],
             max_completion_tokens: maxTokens,
           };
-          
+
           // Only add temperature for models that support it
           if (includeSamplingParams && supportsTemperature(MODEL)) {
             payload.temperature = 0.2;
           }
-          
+
           return payload;
         };
 
@@ -316,29 +328,103 @@ serve(async (req) => {
           });
         };
 
-        // Helper to extract text from AI response
-        const extractText = (aiData: any): { text: string | undefined; finishReason: string | undefined; refusal: string | undefined } => {
-          const choice = aiData?.choices?.[0];
-          const msg = choice?.message;
-          const finishReason = choice?.finish_reason;
-          const refusal = msg?.refusal;
-          
-          let text: string | undefined;
-          const content = msg?.content;
-          
-          if (typeof content === 'string') {
-            text = content.trim();
-          } else if (Array.isArray(content)) {
-            text = content
-              .map((part: any) => {
-                if (typeof part === 'string') return part;
-                return part?.text ?? part?.value ?? '';
+        // Helpers to extract output from multiple possible response shapes
+        const truncate = (s: unknown, n: number) => (typeof s === 'string' ? (s.length > n ? `${s.slice(0, n)}…` : s) : undefined);
+
+        const partToText = (part: any): string => {
+          if (!part) return '';
+          if (typeof part === 'string') return part;
+          // Common shapes across OpenAI Responses + Chat Completions content parts
+          if (typeof part.text === 'string') return part.text;
+          if (typeof part?.text?.value === 'string') return part.text.value;
+          if (typeof part.value === 'string') return part.value;
+          if (typeof part.content === 'string') return part.content;
+          return '';
+        };
+
+        const extractText = (resp: any): string | undefined => {
+          // 1) Responses API convenience field
+          if (typeof resp?.output_text === 'string') return resp.output_text.trim();
+
+          // 2) Responses API output[].content[].text/value
+          if (Array.isArray(resp?.output)) {
+            const fromOutput = resp.output
+              .map((o: any) => {
+                const contentArr = Array.isArray(o?.content) ? o.content : [];
+                return contentArr.map(partToText).join('');
               })
               .join('')
               .trim();
+            if (fromOutput) return fromOutput;
           }
-          
-          return { text, finishReason, refusal };
+
+          // 3) Chat Completions: choices[0].message.content (string or array of parts)
+          const content = resp?.choices?.[0]?.message?.content;
+          if (typeof content === 'string') return content.trim();
+          if (Array.isArray(content)) {
+            const joined = content.map(partToText).join('').trim();
+            if (joined) return joined;
+          }
+
+          return undefined;
+        };
+
+        const extractFinishReason = (resp: any): string | undefined => {
+          // Chat Completions
+          const chatFinish = resp?.choices?.[0]?.finish_reason;
+          if (typeof chatFinish === 'string') return chatFinish;
+
+          // Responses API may surface incomplete details instead of finish_reason
+          const outputFinish = resp?.output?.[0]?.finish_reason;
+          if (typeof outputFinish === 'string') return outputFinish;
+
+          const reason = resp?.incomplete_details?.reason;
+          if (typeof reason === 'string') {
+            // Map common Responses API reason to our existing "length" semantics
+            if (reason.toLowerCase().includes('max_output')) return 'length';
+            return reason;
+          }
+
+          return undefined;
+        };
+
+        const extractRefusal = (resp: any): string | undefined => {
+          const r = resp?.choices?.[0]?.message?.refusal;
+          return typeof r === 'string' && r.trim() ? r : undefined;
+        };
+
+        const buildRawDebug = (resp: any, extracted: string | undefined) => {
+          const rawKeys = resp && typeof resp === 'object' ? Object.keys(resp) : [];
+          const choicesContent = resp?.choices?.[0]?.message?.content;
+          const previewChoicesContent =
+            typeof choicesContent === 'string'
+              ? truncate(choicesContent, 200)
+              : Array.isArray(choicesContent)
+                ? truncate(choicesContent.map(partToText).join(''), 200)
+                : undefined;
+
+          let previewOutputContent: string | undefined;
+          if (Array.isArray(resp?.output)) {
+            const outText = resp.output
+              .map((o: any) => {
+                const contentArr = Array.isArray(o?.content) ? o.content : [];
+                return contentArr.map(partToText).join('');
+              })
+              .join('')
+              .trim();
+            previewOutputContent = truncate(outText, 200);
+          }
+
+          return {
+            raw_keys: rawKeys,
+            has_output_text: Boolean(resp?.output_text),
+            has_choices: Boolean(resp?.choices?.length),
+            has_output_array: Boolean(resp?.output?.length),
+            preview_output_text: truncate(resp?.output_text, 200),
+            preview_extracted_text: truncate(extracted ?? '', 200),
+            preview_choices_content: previewChoicesContent,
+            preview_output_content: previewOutputContent,
+          };
         };
 
         let retriedWithoutSampling = false;
@@ -402,7 +488,11 @@ serve(async (req) => {
 
         // Parse first attempt
         let aiData = await aiResponse.json();
-        let { text: translationText, finishReason, refusal } = extractText(aiData);
+
+        let translationText = extractText(aiData);
+        let finishReason = extractFinishReason(aiData);
+        let refusal = extractRefusal(aiData);
+
         finalFinishReason = finishReason;
         extractedTextLength = translationText?.length || 0;
         extractedTextPreview = translationText?.slice(0, 120);
@@ -418,21 +508,27 @@ serve(async (req) => {
           
           if (aiResponse.ok) {
             aiData = await aiResponse.json();
-            const retryResult = extractText(aiData);
-            
-            // Use retry result if it has more content
-            if (retryResult.text && retryResult.text.length >= extractedTextLength) {
-              translationText = retryResult.text;
-              finalFinishReason = retryResult.finishReason;
-              extractedTextLength = translationText.length;
+
+            const retryText = extractText(aiData);
+            const retryFinish = extractFinishReason(aiData);
+            const retryRefusal = extractRefusal(aiData);
+
+            // Use retry result if it has more (or any) content
+            const retryLen = retryText?.length || 0;
+            if (retryText && retryLen >= extractedTextLength) {
+              translationText = retryText;
+              finalFinishReason = retryFinish;
+              extractedTextLength = retryLen;
               extractedTextPreview = translationText.slice(0, 120);
-              refusal = retryResult.refusal;
+              refusal = retryRefusal;
             }
           }
         }
 
-        // Check if we still have no text
+        // If we still have no text, log raw response shape (admin-only) and fail
         if (!translationText) {
+          const rawDebug = buildRawDebug(aiData, translationText);
+
           const emptyError = refusal
             ? `Model refused: ${refusal}`
             : `Empty response from AI (finish_reason=${finalFinishReason ?? 'unknown'}) with max_output_tokens=${currentMaxTokens}`;
@@ -444,6 +540,7 @@ serve(async (req) => {
             retried_with_more_tokens: retriedWithMoreTokens,
             finish_reason: finalFinishReason,
             extracted_text_length: extractedTextLength,
+            raw_debug: rawDebug,
             error: {
               type: refusal ? 'refusal' : 'empty_response',
               code: finalFinishReason,
@@ -451,7 +548,11 @@ serve(async (req) => {
             },
           };
 
-          console.error(`[ERROR] Block ${block.id}: empty response`, JSON.stringify({ diag, aiData: JSON.stringify(aiData).slice(0, 500) }));
+          // Admin-only debug logging (this function is admin-gated)
+          console.error(
+            `[ERROR] Block ${block.id}: empty response (shape debug)` ,
+            JSON.stringify({ diag, raw_debug: rawDebug })
+          );
 
           await supabase
             .from('lineblock_translations')
@@ -462,12 +563,13 @@ serve(async (req) => {
           return diag;
         }
 
-        // Save translation
+        // Save translation (even if finish_reason=length; partial output is acceptable)
         await supabase
           .from('lineblock_translations')
           .update({
             translation_text: translationText,
             status: 'complete',
+            review_status: 'needs_review',
             error: null,
           })
           .eq('lineblock_id', block.id)
