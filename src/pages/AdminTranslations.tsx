@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles, RotateCcw } from "lucide-react";
+import { Loader2, ChevronLeft, Languages, Play, CheckCircle, AlertCircle, RefreshCw, Square, TriangleAlert, Sparkles, RotateCcw, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
@@ -51,8 +51,10 @@ const AdminTranslations = () => {
   const [generatingGpt52, setGeneratingGpt52] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [importing, setImporting] = useState(false);
   const cancelRef = useRef(false);
   const cancelGpt52Ref = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Block diagnostic interface matching edge function response
   interface BlockDiagnostic {
@@ -487,6 +489,53 @@ const AdminTranslations = () => {
     }
   };
 
+  const handleImportCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please log in');
+        return;
+      }
+
+      const csvContent = await file.text();
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/import-translations-csv`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ csv_content: csvContent }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to import translations');
+      }
+
+      toast.success(`Imported ${result.processed} translations from ${result.total_rows} rows`);
+      setRefreshKey(prev => prev + 1);
+    } catch (error: any) {
+      console.error('Error importing CSV:', error);
+      toast.error(error.message || 'Failed to import CSV');
+    } finally {
+      setImporting(false);
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
 
   if (!isAdmin) {
@@ -572,6 +621,47 @@ const AdminTranslations = () => {
                     </SelectContent>
                   </Select>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Import CSV */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Import Translations CSV
+                </CardTitle>
+                <CardDescription>
+                  Upload a CSV file to import translations. Must have columns: lineblock_id, style, translation_text, model, prompt_version, status, review_status, source
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleImportCSV}
+                  className="hidden"
+                  id="csv-import"
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {importing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Choose CSV File
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
 
