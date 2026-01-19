@@ -7,12 +7,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Loader2, ChevronLeft, Languages, CheckCircle, AlertCircle, Edit, 
   RefreshCw, Save, Eye, XCircle, Plus, Play, Square, TriangleAlert,
@@ -132,6 +134,9 @@ const AdminTranslationsReview = () => {
   
   // Bulk actions
   const [bulkActioning, setBulkActioning] = useState(false);
+  
+  // Row selection for bulk actions
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
 
   // Check admin status
   useEffect(() => {
@@ -617,7 +622,120 @@ const AdminTranslationsReview = () => {
     }
   };
 
-  // Bulk actions
+  // Bulk actions for selected rows
+  const handleBulkSelectedApprove = async () => {
+    const toApprove = lineBlocks.filter(lb => 
+      selectedRows.has(lb.id) &&
+      lb.translation?.status === 'complete' && 
+      lb.translation?.review_status !== 'approved'
+    );
+    
+    if (toApprove.length === 0) {
+      toast.info('No selected blocks to approve');
+      return;
+    }
+
+    setBulkActioning(true);
+    try {
+      const updates = toApprove.map(lb => ({
+        lineblock_id: lb.id,
+        style: selectedStyle,
+        review_status: 'approved',
+        translation_text: lb.translation!.translation_text,
+        status: 'complete',
+        source: lb.translation!.source,
+      }));
+
+      await supabase
+        .from('lineblock_translations')
+        .upsert(updates, { onConflict: 'lineblock_id,style' });
+
+      toast.success(`Approved ${toApprove.length} selected translations`);
+      setSelectedRows(new Set());
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to bulk approve');
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  const handleBulkSelectedNeedsReview = async () => {
+    const toMark = lineBlocks.filter(lb => 
+      selectedRows.has(lb.id) &&
+      lb.translation?.status === 'complete' && 
+      lb.translation?.review_status !== 'needs_review'
+    );
+    
+    if (toMark.length === 0) {
+      toast.info('No selected blocks to mark');
+      return;
+    }
+
+    setBulkActioning(true);
+    try {
+      const updates = toMark.map(lb => ({
+        lineblock_id: lb.id,
+        style: selectedStyle,
+        review_status: 'needs_review',
+        translation_text: lb.translation!.translation_text,
+        status: 'complete',
+        source: lb.translation!.source,
+      }));
+
+      await supabase
+        .from('lineblock_translations')
+        .upsert(updates, { onConflict: 'lineblock_id,style' });
+
+      toast.success(`Marked ${toMark.length} as needs review`);
+      setSelectedRows(new Set());
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to bulk mark');
+    } finally {
+      setBulkActioning(false);
+    }
+  };
+
+  // Inline review status update
+  const handleInlineReviewChange = async (line: LineBlockWithTranslation, newStatus: string) => {
+    if (!line.translation) return;
+    
+    try {
+      await supabase
+        .from('lineblock_translations')
+        .update({ review_status: newStatus })
+        .eq('id', line.translation.id);
+
+      toast.success(`Updated to ${newStatus === 'approved' ? 'Approved' : 'Needs Review'}`);
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update');
+    }
+  };
+
+  // Row selection handlers
+  const toggleRowSelection = (id: string) => {
+    setSelectedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedRows.size === lineBlocks.length) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(lineBlocks.map(lb => lb.id)));
+    }
+  };
+
+  // Bulk actions (original - for "all shown")
   const handleBulkApprove = async () => {
     const toApprove = lineBlocks.filter(lb => 
       lb.translation?.status === 'complete' && 
@@ -923,24 +1041,60 @@ const AdminTranslationsReview = () => {
               </Label>
             </div>
             <div className="flex-1" />
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleBulkApprove}
-              disabled={bulkActioning}
-            >
-              <CheckCircle className="w-4 h-4 mr-1" />
-              Approve All Shown
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleBulkMarkNeedsReview}
-              disabled={bulkActioning}
-            >
-              <Eye className="w-4 h-4 mr-1" />
-              Mark All Needs Review
-            </Button>
+            {selectedRows.size > 0 && (
+              <>
+                <Badge variant="secondary" className="mr-2">
+                  {selectedRows.size} selected
+                </Badge>
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={handleBulkSelectedApprove}
+                  disabled={bulkActioning}
+                >
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Approve Selected
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleBulkSelectedNeedsReview}
+                  disabled={bulkActioning}
+                >
+                  <Eye className="w-4 h-4 mr-1" />
+                  Mark Selected Needs Review
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setSelectedRows(new Set())}
+                >
+                  Clear
+                </Button>
+              </>
+            )}
+            {selectedRows.size === 0 && (
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleBulkApprove}
+                  disabled={bulkActioning}
+                >
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Approve All Shown
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleBulkMarkNeedsReview}
+                  disabled={bulkActioning}
+                >
+                  <Eye className="w-4 h-4 mr-1" />
+                  Mark All Needs Review
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -954,15 +1108,21 @@ const AdminTranslationsReview = () => {
         ) : lineBlocks.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">No lines found</div>
         ) : (
-          <div className="max-w-7xl mx-auto">
+          <TooltipProvider delayDuration={300}>
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox 
+                      checked={lineBlocks.length > 0 && selectedRows.size === lineBlocks.length}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead className="w-20">Location</TableHead>
                   <TableHead className="w-28">Speaker</TableHead>
                   <TableHead>Original (excerpt)</TableHead>
                   <TableHead className="w-24">Status</TableHead>
-                  <TableHead className="w-28">Review</TableHead>
+                  <TableHead className="w-36">Review</TableHead>
                   <TableHead className="w-24">Source</TableHead>
                   <TableHead className="w-32">Flags</TableHead>
                   <TableHead className="w-20">Actions</TableHead>
@@ -970,33 +1130,83 @@ const AdminTranslationsReview = () => {
               </TableHeader>
               <TableBody>
                 {lineBlocks.map(line => (
-                  <TableRow key={line.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openDetail(line)}>
-                    <TableCell className="text-xs text-muted-foreground">
+                  <TableRow key={line.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox 
+                        checked={selectedRows.has(line.id)}
+                        onCheckedChange={() => toggleRowSelection(line.id)}
+                      />
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground" onClick={() => openDetail(line)}>
                       {line.section?.act_number && line.section?.scene_number 
                         ? `${line.section.act_number}.${line.section.scene_number}` 
-                        : '-'}
-                      <br />#{line.order_index}
+                        : '—'}
+                      <span className="ml-1">#{line.order_index}</span>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{line.speaker_name}</Badge>
+                    <TableCell onClick={() => openDetail(line)}>
+                      <Badge variant="outline" className="font-medium">{line.speaker_name}</Badge>
                     </TableCell>
-                    <TableCell className="max-w-md truncate text-sm">
-                      {line.text_raw.slice(0, 80)}...
+                    <TableCell className="max-w-xs" onClick={() => openDetail(line)}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="truncate text-sm">
+                            {line.text_raw.slice(0, 60)}{line.text_raw.length > 60 ? '...' : ''}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-md p-4 bg-popover border border-border">
+                          <div className="space-y-2">
+                            <div>
+                              <span className="font-semibold text-xs text-muted-foreground">Original:</span>
+                              <p className="text-sm whitespace-pre-wrap">{line.text_raw}</p>
+                            </div>
+                            {line.translation?.translation_text && (
+                              <div className="border-t pt-2">
+                                <span className="font-semibold text-xs text-muted-foreground">Translation:</span>
+                                <p className="text-sm whitespace-pre-wrap text-primary">{line.translation.translation_text}</p>
+                              </div>
+                            )}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableCell>
-                    <TableCell>{getStatusBadge(line.translation)}</TableCell>
-                    <TableCell>{getReviewBadge(line.translation)}</TableCell>
-                    <TableCell>{getSourceBadge(line.translation?.source)}</TableCell>
-                    <TableCell>
+                    <TableCell onClick={() => openDetail(line)}>{getStatusBadge(line.translation)}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {line.translation?.status === 'complete' ? (
+                        <Select 
+                          value={line.translation?.review_status || 'needs_review'} 
+                          onValueChange={(val) => handleInlineReviewChange(line, val)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="needs_review">
+                              <span className="flex items-center gap-1">
+                                <Eye className="w-3 h-3" /> Needs Review
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="approved">
+                              <span className="flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" /> Approved
+                              </span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell onClick={() => openDetail(line)}>{getSourceBadge(line.translation?.source)}</TableCell>
+                    <TableCell onClick={() => openDetail(line)}>
                       <div className="flex flex-wrap gap-1">
                         {(line.script_issues?.length || 0) > 0 && (
                           <Badge variant="destructive" className="text-xs">
                             <Flag className="w-3 h-3 mr-1" />
-                            {line.script_issues?.length} issue(s)
+                            {line.script_issues!.length}
                           </Badge>
                         )}
                         {(line.suspicious_reasons?.length || 0) > 0 && (
-                          <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
-                            <AlertTriangle className="w-3 h-3 mr-1" />
+                          <Badge variant="outline" className="text-xs border-orange-500 text-orange-600">
                             Suspicious
                           </Badge>
                         )}
@@ -1011,7 +1221,7 @@ const AdminTranslationsReview = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </TooltipProvider>
         )}
       </main>
 
