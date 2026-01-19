@@ -419,7 +419,7 @@ const AdminTranslationEditor = () => {
                   className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-card hover:border-primary/30 transition-colors"
                 >
                   {/* Left column: Original text */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex flex-col">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs font-mono">
                         #{lb.order_index}
@@ -428,13 +428,13 @@ const AdminTranslationEditor = () => {
                         {lb.speaker_name}
                       </Badge>
                     </div>
-                    <div className="font-serif text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+                    <div className="font-serif text-sm leading-relaxed whitespace-pre-wrap text-foreground/90 flex-1">
                       {lb.text_raw}
                     </div>
                   </div>
                   
                   {/* Right column: Translation (editable) */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex flex-col">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">Translation</span>
@@ -480,7 +480,7 @@ const AdminTranslationEditor = () => {
                       value={translationText}
                       onChange={(e) => handleTextChange(lb.id, e.target.value)}
                       placeholder={isMissing ? "No translation yet. Type here or click Regen..." : ""}
-                      className={`min-h-[100px] text-sm resize-none ${isMissing ? 'border-amber-500/50' : ''}`}
+                      className={`flex-1 min-h-[60px] text-sm resize-none ${isMissing ? 'border-amber-500/50' : ''}`}
                     />
                   </div>
                 </div>
