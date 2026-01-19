@@ -10,12 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
-  Loader2, ChevronLeft, Scissors, Combine, AlertTriangle, Save, RefreshCw, 
+  Loader2, Scissors, Combine, AlertTriangle, Save, RefreshCw, 
   ChevronUp, ChevronDown, TriangleAlert
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
+import AppBreadcrumbs from "@/components/AppBreadcrumbs";
 
 interface ScriptSection {
   id: string;
@@ -445,21 +446,21 @@ const AdminScriptFix = () => {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-foreground flex items-center gap-2">
-              <Scissors className="w-5 h-5 text-primary" />
-              Script Fix Tools
-            </h1>
-            <p className="text-sm text-muted-foreground">Split, merge, and fix line blocks</p>
+        <div className="px-4 py-3">
+          <AppBreadcrumbs className="mb-2" />
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <h1 className="font-semibold text-foreground flex items-center gap-2">
+                <Scissors className="w-5 h-5 text-primary" />
+                Script Fix Tools
+              </h1>
+              <p className="text-sm text-muted-foreground">Split, merge, and fix line blocks</p>
+            </div>
+            <Button size="sm" onClick={handleRegenerateTranslations}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Regenerate Missing
+            </Button>
           </div>
-          <Button size="sm" onClick={handleRegenerateTranslations}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Regenerate Missing
-          </Button>
         </div>
       </header>
 

@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID } from "@/config/canonicalScenes";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import AppBreadcrumbs from "@/components/AppBreadcrumbs";
 
 interface ScriptSection {
   id: string;
@@ -362,12 +363,9 @@ const AdminTranslationEditor = () => {
       {/* Header */}
       <div className="border-b bg-card sticky top-0 z-10">
         <div className="container mx-auto px-4 py-3">
+          <AppBreadcrumbs className="mb-2" />
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/admin/translations-review')}>
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Back
-              </Button>
               <h1 className="text-lg font-semibold">Translation Editor</h1>
             </div>
             

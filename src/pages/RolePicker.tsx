@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
 import { useProduction } from "@/hooks/useProduction";
-import { ArrowLeft, User, Check, Loader2 } from "lucide-react";
+import { User, Check, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import AppBreadcrumbs from "@/components/AppBreadcrumbs";
 
 const RolePicker = () => {
   const navigate = useNavigate();
@@ -80,15 +81,7 @@ const RolePicker = () => {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="px-4 pt-6 pb-4">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate("/")}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Games
-        </Button>
+        <AppBreadcrumbs className="mb-4" />
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
           Who Are You Playing?
         </h1>

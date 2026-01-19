@@ -104,7 +104,7 @@ const PracticeModes = () => {
           variant="ghost" 
           size="lg" 
           className="w-full text-muted-foreground"
-          onClick={() => navigate("/upload")}
+          onClick={() => navigate("/admin")}
         >
           <Settings className="w-4 h-4 mr-2" />
           Admin Settings

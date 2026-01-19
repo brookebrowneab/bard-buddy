@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useScene } from '@/context/SceneContext';
 import { useSceneData } from '@/hooks/useSceneData';
-import { ArrowLeft, Layers, Loader2, Check } from 'lucide-react';
+import { Layers, Loader2, Check } from 'lucide-react';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 import type { ScriptSection } from '@/types/scene';
 
 const SectionPicker = () => {
@@ -102,15 +103,7 @@ const SectionPicker = () => {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="px-4 pt-6 pb-4">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate('/role-picker')}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
+        <AppBreadcrumbs className="mb-4" />
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
           Choose Scene
         </h1>

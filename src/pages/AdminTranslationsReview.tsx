@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
-  Loader2, ChevronLeft, Languages, CheckCircle, AlertCircle, Edit, 
+  Loader2, Languages, CheckCircle, AlertCircle, Edit, 
   RefreshCw, Save, Eye, XCircle, Plus, Play, Square, TriangleAlert,
   Flag, Scissors, AlertTriangle, Database
 } from "lucide-react";
@@ -26,6 +26,7 @@ import {
   CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING,
   getSuspiciousReasons, SUSPICIOUS_HEURISTICS
 } from "@/config/canonicalScenes";
+import AppBreadcrumbs from "@/components/AppBreadcrumbs";
 
 interface Scene {
   id: string;
@@ -902,42 +903,42 @@ const AdminTranslationsReview = () => {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="font-semibold text-foreground flex items-center gap-2">
-              <Languages className="w-5 h-5 text-primary" />
-              Translation Review
-            </h1>
+        <div className="px-4 py-3">
+          <AppBreadcrumbs className="mb-2" />
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <h1 className="font-semibold text-foreground flex items-center gap-2">
+                <Languages className="w-5 h-5 text-primary" />
+                Translation Review
+              </h1>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => navigate('/admin/script-fix')}>
+              <Scissors className="w-4 h-4 mr-2" />
+              Script Fix
+            </Button>
+            {generating ? (
+              <Button variant="destructive" size="sm" onClick={() => { cancelRef.current = true; }}>
+                <Square className="w-4 h-4 mr-2" />
+                Cancel
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleBulkGenerate}>
+                <Play className="w-4 h-4 mr-2" />
+                Generate Missing
+              </Button>
+            )}
+            {generatingGpt52 ? (
+              <Button variant="destructive" size="sm" onClick={() => { cancelGpt52Ref.current = true; }}>
+                <Square className="w-4 h-4 mr-2" />
+                Cancel GPT-5.2
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleBulkGenerateGpt52} className="text-purple-600 border-purple-600 hover:bg-purple-50">
+                <Play className="w-4 h-4 mr-2" />
+                Generate GPT-5.2
+              </Button>
+            )}
           </div>
-          <Button variant="outline" size="sm" onClick={() => navigate('/admin/script-fix')}>
-            <Scissors className="w-4 h-4 mr-2" />
-            Script Fix
-          </Button>
-          {generating ? (
-            <Button variant="destructive" size="sm" onClick={() => { cancelRef.current = true; }}>
-              <Square className="w-4 h-4 mr-2" />
-              Cancel
-            </Button>
-          ) : (
-            <Button size="sm" onClick={handleBulkGenerate}>
-              <Play className="w-4 h-4 mr-2" />
-              Generate Missing
-            </Button>
-          )}
-          {generatingGpt52 ? (
-            <Button variant="destructive" size="sm" onClick={() => { cancelGpt52Ref.current = true; }}>
-              <Square className="w-4 h-4 mr-2" />
-              Cancel GPT-5.2
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" onClick={handleBulkGenerateGpt52} className="text-purple-600 border-purple-600 hover:bg-purple-50">
-              <Play className="w-4 h-4 mr-2" />
-              Generate GPT-5.2
-            </Button>
-          )}
         </div>
       </header>
 
