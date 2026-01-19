@@ -554,7 +554,7 @@ const AdminTranslations = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/admin')}
           >
             <ChevronLeft className="w-5 h-5" />
           </Button>

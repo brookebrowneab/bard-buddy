@@ -162,11 +162,11 @@ const ParseReview = () => {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/admin')}
           className="mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
+          Back to Admin
         </Button>
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
           Review Parse
