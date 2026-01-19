@@ -68,6 +68,16 @@ const AdminTranslations = () => {
     finish_reason?: string;
     extracted_text_length?: number;
     extracted_text_preview?: string;
+    raw_debug?: {
+      raw_keys: string[];
+      has_output_text: boolean;
+      has_choices: boolean;
+      has_output_array: boolean;
+      preview_output_text?: string;
+      preview_extracted_text?: string;
+      preview_choices_content?: string;
+      preview_output_content?: string;
+    };
     error?: {
       http_status?: number;
       type?: string;
@@ -815,6 +825,30 @@ const AdminTranslations = () => {
                                 <Badge variant="outline" className="text-[10px] border-orange-500 text-orange-600">TOO LONG</Badge>
                               )}
                             </div>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {typeof block.extracted_text_length === "number" && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  extracted_len: {block.extracted_text_length}
+                                </Badge>
+                              )}
+                              {block.finish_reason && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  finish: {block.finish_reason}
+                                </Badge>
+                              )}
+                              {block.retried_without_sampling && (
+                                <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-600">
+                                  no-sampling
+                                </Badge>
+                              )}
+                              {block.retried_with_more_tokens && (
+                                <Badge variant="outline" className="text-[10px] border-blue-500 text-blue-600">
+                                  more-tokens
+                                </Badge>
+                              )}
+                            </div>
+
                             {block.error && (
                               <div className="text-destructive font-mono pl-2 border-l-2 border-destructive/30">
                                 {block.error.http_status && <span className="mr-2">HTTP {block.error.http_status}</span>}
@@ -822,6 +856,17 @@ const AdminTranslations = () => {
                                 {block.error.code && <span className="mr-2">({block.error.code})</span>}
                                 <span>{block.error.message}</span>
                               </div>
+                            )}
+
+                            {block.raw_debug && (
+                              <details className="text-[10px]">
+                                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                                  raw response debug
+                                </summary>
+                                <pre className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+{JSON.stringify(block.raw_debug, null, 2)}
+                                </pre>
+                              </details>
                             )}
                           </div>
                         ))}
