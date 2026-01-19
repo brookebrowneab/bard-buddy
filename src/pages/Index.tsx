@@ -98,39 +98,51 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-12">
+      <main className="flex-1 flex flex-col items-center justify-center px-4 md:px-6 pb-12">
         <div className="w-full max-w-sm space-y-4">
           {/* Current Role Display */}
           {selectedRole && (
-            <div className="text-center mb-6 p-4 md:p-4 bg-card rounded-lg border border-border min-h-20">
-              <p className="text-base md:text-sm text-muted-foreground mb-1">Your Role</p>
-              <p className="font-serif text-xl md:text-xl font-semibold text-foreground">{selectedRole}</p>
+            <div className="text-center mb-6 p-5 bg-card rounded-lg border border-border">
+              <p className="text-base text-muted-foreground mb-1">Your Role</p>
+              <p className="font-serif text-2xl font-semibold text-foreground break-words">{selectedRole}</p>
             </div>
           )}
 
           {/* Choose Role - Primary Action */}
           <Link to="/role-picker" className="block w-full">
-            <Button variant="stage" size="xl" className="w-full text-base md:text-sm min-h-14">
-              <User className="w-5 h-5 mr-2" />
-              <span className="leading-tight">{selectedRole ? "Change Role" : "Choose My Role"}</span>
+            <Button variant="stage" size="xl" className="w-full h-auto py-5 px-4">
+              <div className="flex items-center gap-3 w-full">
+                <User className="w-6 h-6 flex-shrink-0" />
+                <span className="text-lg font-semibold text-left flex-1 break-words leading-snug">
+                  {selectedRole ? "Change Role" : "Choose My Role"}
+                </span>
+              </div>
             </Button>
           </Link>
 
           {/* Continue Practicing - if role selected */}
           {selectedRole && (
             <Link to="/section-picker" className="block w-full">
-              <Button variant="default" size="xl" className="w-full text-base md:text-sm min-h-14">
-                <Sparkles className="w-5 h-5 mr-2" />
-                Practice
+              <Button variant="default" size="xl" className="w-full h-auto py-5 px-4">
+                <div className="flex items-center gap-3 w-full">
+                  <Sparkles className="w-6 h-6 flex-shrink-0" />
+                  <span className="text-lg font-semibold text-left flex-1 break-words leading-snug">
+                    Practice
+                  </span>
+                </div>
               </Button>
             </Link>
           )}
 
           {/* Admin Settings */}
           <Link to="/upload" className="block w-full">
-            <Button variant="ghost" size="lg" className="w-full text-muted-foreground text-base md:text-sm min-h-12">
-              <Settings className="w-5 h-5 md:w-4 md:h-4 mr-2" />
-              Admin Settings
+            <Button variant="ghost" size="lg" className="w-full h-auto py-4 px-4 text-muted-foreground">
+              <div className="flex items-center gap-3 w-full">
+                <Settings className="w-5 h-5 flex-shrink-0" />
+                <span className="text-base text-left flex-1 break-words leading-snug">
+                  Admin Settings
+                </span>
+              </div>
             </Button>
           </Link>
         </div>
