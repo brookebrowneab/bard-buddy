@@ -5,13 +5,12 @@ import { useScene } from "@/context/SceneContext";
 import { usePracticeData } from "@/hooks/usePracticeData";
 import PracticeHeader from "@/components/PracticeHeader";
 import PracticeNavigation from "@/components/PracticeNavigation";
-import { Quote, Eye, EyeOff, Loader2, ChevronDown } from "lucide-react";
+import { Quote, Eye, EyeOff, Loader2 } from "lucide-react";
 
 const FirstLetter = () => {
   const { getCurrentLine, selectedRole, currentLineIndex, totalLines } = useScene();
   const { loading, error } = usePracticeData();
   const [revealedWords, setRevealedWords] = useState<Set<string>>(new Set());
-  const [revealedVerseLines, setRevealedVerseLines] = useState(0);
   const navigate = useNavigate();
 
   const line = getCurrentLine();
@@ -33,12 +32,10 @@ const FirstLetter = () => {
   }, [line]);
 
   const hasMultipleVerseLines = verseLineData.length > 1;
-  const allVerseLinesRevealed = revealedVerseLines >= verseLineData.length;
 
   // Reset state when line changes
   useEffect(() => {
     setRevealedWords(new Set());
-    setRevealedVerseLines(0);
   }, [currentLineIndex]);
 
   // Show loading state
@@ -99,16 +96,18 @@ const FirstLetter = () => {
     });
   };
 
-  const handleRevealNextVerseLine = () => {
-    if (revealedVerseLines < verseLineData.length) {
-      setRevealedVerseLines(prev => prev + 1);
-    }
+  const revealLine = (lineIdx: number) => {
+    const lineWords = verseLineData[lineIdx]?.words || [];
+    setRevealedWords(prev => {
+      const next = new Set(prev);
+      lineWords.forEach(w => next.add(w.globalKey));
+      return next;
+    });
   };
 
   const revealAllWords = () => {
     const allKeys = verseLineData.flatMap(vl => vl.words.map(w => w.globalKey));
     setRevealedWords(new Set(allKeys));
-    setRevealedVerseLines(verseLineData.length);
   };
 
   const hideAllWords = () => {
@@ -117,10 +116,16 @@ const FirstLetter = () => {
 
   const handleNextReset = () => {
     setRevealedWords(new Set());
-    setRevealedVerseLines(0);
   };
 
-  const showAll = revealedWords.size === verseLineData.flatMap(vl => vl.words).length;
+  const allWordsCount = verseLineData.flatMap(vl => vl.words).length;
+  const showAll = revealedWords.size === allWordsCount;
+
+  // Check if all words in a line are revealed
+  const isLineFullyRevealed = (lineIdx: number) => {
+    const lineWords = verseLineData[lineIdx]?.words || [];
+    return lineWords.every(w => revealedWords.has(w.globalKey));
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
@@ -143,62 +148,58 @@ const FirstLetter = () => {
 
           {/* Instruction */}
           <p className="text-center text-muted-foreground text-sm mb-4">
-            {hasMultipleVerseLines && revealedVerseLines < verseLineData.length
-              ? `Reveal lines one at a time, tap words for hints (${revealedVerseLines}/${verseLineData.length} lines shown)`
-              : "Tap any word to reveal it"
-            }
+            Tap words to reveal • {hasMultipleVerseLines ? "Tap line numbers to reveal full lines" : ""}
           </p>
 
-          {/* First Letter Display - one verse line at a time */}
+          {/* First Letter Display - all verse lines shown */}
           <div className="flex-1 p-4 md:p-5 bg-card rounded-lg border border-border mb-4 space-y-3">
-            {verseLineData.slice(0, hasMultipleVerseLines ? revealedVerseLines : verseLineData.length).map((verseLineItem, vIdx) => (
-              <p key={vIdx} className="font-serif text-lg md:text-xl leading-loose break-words animate-in fade-in slide-in-from-top-2 duration-300">
-                {verseLineItem.words.map((wordData, wIdx) => {
-                  const isRevealed = revealedWords.has(wordData.globalKey);
-                  return (
-                    <span key={wordData.globalKey}>
-                      <button
-                        onClick={() => toggleWordReveal(wordData.globalKey)}
-                        className={`
-                          inline-block px-0.5 md:px-1 py-0.5 rounded transition-all duration-200 break-all
-                          ${isRevealed 
-                            ? "text-primary font-medium" 
-                            : "text-foreground hover:bg-primary/10"
-                          }
-                        `}
-                      >
-                        {isRevealed ? wordData.word : getFirstLetterDisplay(wordData.word)}
-                      </button>
-                      {wIdx < verseLineItem.words.length - 1 && " "}
-                    </span>
-                  );
-                })}
-              </p>
+            {verseLineData.map((verseLineItem, vIdx) => (
+              <div key={vIdx} className="flex gap-2 items-start animate-in fade-in slide-in-from-top-2 duration-300">
+                {/* Line number button to reveal entire line */}
+                {hasMultipleVerseLines && (
+                  <button
+                    onClick={() => revealLine(vIdx)}
+                    className={`
+                      flex-shrink-0 w-6 h-6 rounded-full text-xs font-medium
+                      flex items-center justify-center transition-colors
+                      ${isLineFullyRevealed(vIdx)
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                      }
+                    `}
+                    title={`Reveal line ${vIdx + 1}`}
+                  >
+                    {vIdx + 1}
+                  </button>
+                )}
+                <p className="font-serif text-lg md:text-xl leading-loose break-words flex-1">
+                  {verseLineItem.words.map((wordData, wIdx) => {
+                    const isRevealed = revealedWords.has(wordData.globalKey);
+                    return (
+                      <span key={wordData.globalKey}>
+                        <button
+                          onClick={() => toggleWordReveal(wordData.globalKey)}
+                          className={`
+                            inline-block px-0.5 md:px-1 py-0.5 rounded transition-all duration-200 break-all
+                            ${isRevealed 
+                              ? "text-primary font-medium" 
+                              : "text-foreground hover:bg-primary/10"
+                            }
+                          `}
+                        >
+                          {isRevealed ? wordData.word : getFirstLetterDisplay(wordData.word)}
+                        </button>
+                        {wIdx < verseLineItem.words.length - 1 && " "}
+                      </span>
+                    );
+                  })}
+                </p>
+              </div>
             ))}
-
-            {/* Show placeholder if no lines revealed yet in multi-line mode */}
-            {hasMultipleVerseLines && revealedVerseLines === 0 && (
-              <p className="text-muted-foreground text-center italic">
-                Tap "Reveal Next Line" to begin
-              </p>
-            )}
           </div>
 
           {/* Action Buttons */}
           <div className="space-y-3">
-            {/* Next Line button for multi-line passages */}
-            {hasMultipleVerseLines && !allVerseLinesRevealed && (
-              <Button
-                variant="reveal"
-                size="lg"
-                onClick={handleRevealNextVerseLine}
-                className="w-full"
-              >
-                <ChevronDown className="w-5 h-5 mr-2" />
-                Reveal Next Line ({revealedVerseLines + 1}/{verseLineData.length})
-              </Button>
-            )}
-
             {/* Reveal/Hide All Button */}
             <Button
               variant="outline"
