@@ -15,8 +15,8 @@ const Scramble = () => {
   const { loading, error } = usePracticeData();
   const navigate = useNavigate();
 
-  // Default to ordering whole lines (true)
-  const [orderWholeLines, setOrderWholeLines] = useState(true);
+  // Toggle for visually grouping chunks by their source line
+  const [groupByLine, setGroupByLine] = useState(true);
   const [wordsPerChunk, setWordsPerChunk] = useState(3);
   const [selectedOrder, setSelectedOrder] = useState<number[]>([]);
   const [availableChunks, setAvailableChunks] = useState<number[]>([]);
@@ -32,35 +32,24 @@ const Scramble = () => {
 
   const hasMultipleVerseLines = verseLines.length > 1;
 
-  // Create chunks based on orderWholeLines setting
-  // When ordering whole lines: each verse line is a chunk
-  // When ordering word chunks: split into chunks of wordsPerChunk words, grouped visually by line
+  // Always create word chunks, keeping track of which line they belong to
   const chunks = useMemo(() => {
     if (!line) return [];
     
-    if (orderWholeLines && hasMultipleVerseLines) {
-      // Each verse line becomes a chunk
-      return verseLines.map((verseLine, lineIdx) => ({
-        text: verseLine,
-        lineIdx,
-      }));
-    } else {
-      // Split each verse line into word chunks, keeping track of which line they belong to
-      const result: { text: string; lineIdx: number }[] = [];
-      
-      verseLines.forEach((verseLine, lineIdx) => {
-        const words = verseLine.split(/\s+/).filter(w => w);
-        for (let i = 0; i < words.length; i += wordsPerChunk) {
-          result.push({
-            text: words.slice(i, i + wordsPerChunk).join(" "),
-            lineIdx,
-          });
-        }
-      });
-      
-      return result;
-    }
-  }, [line, orderWholeLines, hasMultipleVerseLines, verseLines, wordsPerChunk]);
+    const result: { text: string; lineIdx: number }[] = [];
+    
+    verseLines.forEach((verseLine, lineIdx) => {
+      const words = verseLine.split(/\s+/).filter(w => w);
+      for (let i = 0; i < words.length; i += wordsPerChunk) {
+        result.push({
+          text: words.slice(i, i + wordsPerChunk).join(" "),
+          lineIdx,
+        });
+      }
+    });
+    
+    return result;
+  }, [line, verseLines, wordsPerChunk]);
 
   // Scrambled order (randomized on mount and line change)
   const scrambledOrder = useMemo(() => {
@@ -71,16 +60,16 @@ const Scramble = () => {
       [indices[i], indices[j]] = [indices[j], indices[i]];
     }
     return indices;
-  }, [chunks.length, currentLineIndex, orderWholeLines, wordsPerChunk]);
+  }, [chunks.length, currentLineIndex, wordsPerChunk]);
 
-  // Group available chunks by line for visual grouping when not ordering whole lines
+  // Group available chunks by line for visual grouping (when toggle is on)
   const groupedAvailableChunks = useMemo(() => {
-    if (orderWholeLines || !hasMultipleVerseLines) {
-      return [{ lineIdx: 0, chunkIndices: availableChunks }];
+    if (!groupByLine || !hasMultipleVerseLines) {
+      // No grouping - return all chunks in one group
+      return [{ lineIdx: -1, chunkIndices: availableChunks }];
     }
     
     // Group by line index
-    const groups: { lineIdx: number; chunkIndices: number[] }[] = [];
     const lineMap = new Map<number, number[]>();
     
     availableChunks.forEach(idx => {
@@ -91,15 +80,11 @@ const Scramble = () => {
       lineMap.get(lineIdx)!.push(idx);
     });
     
-    // Sort by line index
-    Array.from(lineMap.entries())
+    // Sort by line index and return groups
+    return Array.from(lineMap.entries())
       .sort((a, b) => a[0] - b[0])
-      .forEach(([lineIdx, chunkIndices]) => {
-        groups.push({ lineIdx, chunkIndices });
-      });
-    
-    return groups;
-  }, [availableChunks, chunks, orderWholeLines, hasMultipleVerseLines]);
+      .map(([lineIdx, chunkIndices]) => ({ lineIdx, chunkIndices }));
+  }, [availableChunks, chunks, groupByLine, hasMultipleVerseLines]);
 
   // Reset state when line changes or settings change
   useEffect(() => {
@@ -210,39 +195,37 @@ const Scramble = () => {
           {/* Settings Panel - only show if multiple verse lines */}
           {hasMultipleVerseLines && (
             <div className="mb-4 p-3 bg-muted/30 rounded-lg space-y-3">
-              {/* Order whole lines toggle */}
+              {/* Group by line toggle */}
               <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="order-whole-lines" className="text-sm text-muted-foreground cursor-pointer">
-                  Order whole lines
+                <Label htmlFor="group-by-line" className="text-sm text-muted-foreground cursor-pointer">
+                  Group chunks by line
                 </Label>
                 <Switch
-                  id="order-whole-lines"
-                  checked={orderWholeLines}
-                  onCheckedChange={setOrderWholeLines}
+                  id="group-by-line"
+                  checked={groupByLine}
+                  onCheckedChange={setGroupByLine}
                   disabled={isCorrect !== null}
                 />
               </div>
               
-              {/* Words per chunk slider - only show when not ordering whole lines */}
-              {!orderWholeLines && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm text-muted-foreground">
-                      Words per chunk
-                    </Label>
-                    <span className="text-sm font-medium text-foreground">{wordsPerChunk}</span>
-                  </div>
-                  <Slider
-                    value={[wordsPerChunk]}
-                    onValueChange={(v) => setWordsPerChunk(v[0])}
-                    min={1}
-                    max={6}
-                    step={1}
-                    disabled={isCorrect !== null}
-                    className="w-full"
-                  />
+              {/* Words per chunk slider */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm text-muted-foreground">
+                    Words per chunk
+                  </Label>
+                  <span className="text-sm font-medium text-foreground">{wordsPerChunk}</span>
                 </div>
-              )}
+                <Slider
+                  value={[wordsPerChunk]}
+                  onValueChange={(v) => setWordsPerChunk(v[0])}
+                  min={1}
+                  max={6}
+                  step={1}
+                  disabled={isCorrect !== null}
+                  className="w-full"
+                />
+              </div>
             </div>
           )}
 
@@ -253,9 +236,7 @@ const Scramble = () => {
                 ? "Perfect! You got it right! 🎭" 
                 : isCorrect === false 
                   ? "Not quite—try again!" 
-                  : orderWholeLines && hasMultipleVerseLines
-                    ? "Put the lines in order"
-                    : "Tap chunks in the correct order"
+                  : "Tap chunks in the correct order"
               }
             </p>
             <div className={`
@@ -269,10 +250,10 @@ const Scramble = () => {
             `}>
               {selectedOrder.length === 0 ? (
                 <p className="text-muted-foreground text-center text-sm italic">
-                  Your arranged {orderWholeLines && hasMultipleVerseLines ? 'lines' : 'passage'} will appear here
+                  Your arranged passage will appear here
                 </p>
               ) : (
-                <div className={`flex ${orderWholeLines && hasMultipleVerseLines ? 'flex-col' : 'flex-wrap'} gap-2`}>
+                <div className="flex flex-wrap gap-2">
                   {selectedOrder.map((chunkIndex, position) => (
                     <button
                       key={`selected-${position}`}
@@ -280,7 +261,7 @@ const Scramble = () => {
                       disabled={isCorrect !== null}
                       className={`
                         px-2 md:px-3 py-2 rounded-md font-serif text-xs md:text-sm transition-all break-words max-w-full text-left
-                        ${!orderWholeLines && hasMultipleVerseLines ? `border-l-4 ${getLineColor(chunks[chunkIndex]?.lineIdx ?? 0)}` : ''}
+                        ${groupByLine && hasMultipleVerseLines ? `border-l-4 ${getLineColor(chunks[chunkIndex]?.lineIdx ?? 0)}` : ''}
                         ${isCorrect !== null 
                           ? "bg-card border border-border cursor-default" 
                           : "bg-primary/10 border border-primary/30 hover:bg-primary/20 cursor-pointer"
@@ -300,19 +281,17 @@ const Scramble = () => {
             <div className="mb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Shuffle className="w-4 h-4" />
-                <span className="text-sm">
-                  {orderWholeLines && hasMultipleVerseLines ? 'Available lines' : 'Available chunks'}
-                </span>
+                <span className="text-sm">Available chunks</span>
               </div>
               
-              {/* Grouped display for word chunks */}
+              {/* Grouped or ungrouped display */}
               <div className="space-y-3">
                 {groupedAvailableChunks.map((group, gIdx) => (
                   <div 
                     key={gIdx} 
                     className={`
                       flex flex-wrap gap-2
-                      ${!orderWholeLines && hasMultipleVerseLines && groupedAvailableChunks.length > 1
+                      ${groupByLine && hasMultipleVerseLines && group.lineIdx >= 0
                         ? `p-2 rounded-lg bg-muted/20 border-l-4 ${getLineColor(group.lineIdx)}`
                         : ''
                       }
@@ -322,12 +301,7 @@ const Scramble = () => {
                       <button
                         key={`available-${chunkIndex}`}
                         onClick={() => handleChunkSelect(chunkIndex)}
-                        className={`
-                          px-3 md:px-4 py-2 md:py-3 rounded-lg bg-card border border-border 
-                          hover:border-primary hover:bg-primary/5 font-serif text-sm md:text-base 
-                          transition-all shadow-sm break-words max-w-full text-left
-                          ${orderWholeLines && hasMultipleVerseLines ? 'w-full' : ''}
-                        `}
+                        className="px-3 md:px-4 py-2 md:py-3 rounded-lg bg-card border border-border hover:border-primary hover:bg-primary/5 font-serif text-sm md:text-base transition-all shadow-sm break-words max-w-full text-left"
                       >
                         {chunks[chunkIndex]?.text}
                       </button>
