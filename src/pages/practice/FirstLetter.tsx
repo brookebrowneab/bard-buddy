@@ -1,25 +1,44 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
 import { usePracticeData } from "@/hooks/usePracticeData";
 import PracticeHeader from "@/components/PracticeHeader";
 import PracticeNavigation from "@/components/PracticeNavigation";
-import { Quote, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Quote, Eye, EyeOff, Loader2, ChevronDown } from "lucide-react";
 
 const FirstLetter = () => {
   const { getCurrentLine, selectedRole, currentLineIndex, totalLines } = useScene();
   const { loading, error } = usePracticeData();
-  const [revealedWords, setRevealedWords] = useState<number[]>([]);
-  const [showAll, setShowAll] = useState(false);
+  const [revealedWords, setRevealedWords] = useState<Set<string>>(new Set());
+  const [revealedVerseLines, setRevealedVerseLines] = useState(0);
   const navigate = useNavigate();
 
   const line = getCurrentLine();
 
+  // Split shakespeare_line by newlines into verse lines, then each into words
+  const verseLineData = useMemo(() => {
+    if (!line) return [];
+    const verseLines = line.shakespeare_line.split('\n').filter(l => l.trim());
+    let globalIndex = 0;
+    return verseLines.map((verseLine, lineIdx) => {
+      const words = verseLine.split(/\s+/).filter(w => w);
+      const wordData = words.map((word, wordIdx) => ({
+        word,
+        globalKey: `${lineIdx}-${wordIdx}`,
+        globalIndex: globalIndex++,
+      }));
+      return { verseLine, words: wordData, lineIdx };
+    });
+  }, [line]);
+
+  const hasMultipleVerseLines = verseLineData.length > 1;
+  const allVerseLinesRevealed = revealedVerseLines >= verseLineData.length;
+
   // Reset state when line changes
   useEffect(() => {
-    setRevealedWords([]);
-    setShowAll(false);
+    setRevealedWords(new Set());
+    setRevealedVerseLines(0);
   }, [currentLineIndex]);
 
   // Show loading state
@@ -57,8 +76,6 @@ const FirstLetter = () => {
     );
   }
 
-  const words = line.shakespeare_line.split(/\s+/);
-
   const getFirstLetterDisplay = (word: string): string => {
     // Keep punctuation, show first letter
     const match = word.match(/^([^a-zA-Z]*)([a-zA-Z])(.*?)([^a-zA-Z]*)$/);
@@ -70,28 +87,40 @@ const FirstLetter = () => {
     return word.charAt(0) + "_".repeat(Math.max(0, word.length - 1));
   };
 
-  const toggleWordReveal = (index: number) => {
-    if (revealedWords.includes(index)) {
-      setRevealedWords(prev => prev.filter(i => i !== index));
-    } else {
-      setRevealedWords(prev => [...prev, index]);
+  const toggleWordReveal = (key: string) => {
+    setRevealedWords(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleRevealNextVerseLine = () => {
+    if (revealedVerseLines < verseLineData.length) {
+      setRevealedVerseLines(prev => prev + 1);
     }
   };
 
-  const revealAll = () => {
-    setShowAll(true);
-    setRevealedWords(words.map((_, i) => i));
+  const revealAllWords = () => {
+    const allKeys = verseLineData.flatMap(vl => vl.words.map(w => w.globalKey));
+    setRevealedWords(new Set(allKeys));
+    setRevealedVerseLines(verseLineData.length);
   };
 
-  const hideAll = () => {
-    setShowAll(false);
-    setRevealedWords([]);
+  const hideAllWords = () => {
+    setRevealedWords(new Set());
   };
 
   const handleNextReset = () => {
-    setRevealedWords([]);
-    setShowAll(false);
+    setRevealedWords(new Set());
+    setRevealedVerseLines(0);
   };
+
+  const showAll = revealedWords.size === verseLineData.flatMap(vl => vl.words).length;
 
   return (
     <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
@@ -114,54 +143,82 @@ const FirstLetter = () => {
 
           {/* Instruction */}
           <p className="text-center text-muted-foreground text-sm mb-4">
-            Tap any word to reveal it
+            {hasMultipleVerseLines && revealedVerseLines < verseLineData.length
+              ? `Reveal lines one at a time, tap words for hints (${revealedVerseLines}/${verseLineData.length} lines shown)`
+              : "Tap any word to reveal it"
+            }
           </p>
 
-          {/* First Letter Display */}
-          <div className="flex-1 p-4 md:p-5 bg-card rounded-lg border border-border mb-4">
-            <p className="font-serif text-lg md:text-xl leading-loose break-words">
-              {words.map((word, index) => {
-                const isRevealed = revealedWords.includes(index) || showAll;
-                return (
-                  <span key={index}>
-                    <button
-                      onClick={() => toggleWordReveal(index)}
-                      className={`
-                        inline-block px-0.5 md:px-1 py-0.5 rounded transition-all duration-200 break-all
-                        ${isRevealed 
-                          ? "text-primary font-medium" 
-                          : "text-foreground hover:bg-primary/10"
-                        }
-                      `}
-                    >
-                      {isRevealed ? word : getFirstLetterDisplay(word)}
-                    </button>
-                    {index < words.length - 1 && " "}
-                  </span>
-                );
-              })}
-            </p>
+          {/* First Letter Display - one verse line at a time */}
+          <div className="flex-1 p-4 md:p-5 bg-card rounded-lg border border-border mb-4 space-y-3">
+            {verseLineData.slice(0, hasMultipleVerseLines ? revealedVerseLines : verseLineData.length).map((verseLineItem, vIdx) => (
+              <p key={vIdx} className="font-serif text-lg md:text-xl leading-loose break-words animate-in fade-in slide-in-from-top-2 duration-300">
+                {verseLineItem.words.map((wordData, wIdx) => {
+                  const isRevealed = revealedWords.has(wordData.globalKey);
+                  return (
+                    <span key={wordData.globalKey}>
+                      <button
+                        onClick={() => toggleWordReveal(wordData.globalKey)}
+                        className={`
+                          inline-block px-0.5 md:px-1 py-0.5 rounded transition-all duration-200 break-all
+                          ${isRevealed 
+                            ? "text-primary font-medium" 
+                            : "text-foreground hover:bg-primary/10"
+                          }
+                        `}
+                      >
+                        {isRevealed ? wordData.word : getFirstLetterDisplay(wordData.word)}
+                      </button>
+                      {wIdx < verseLineItem.words.length - 1 && " "}
+                    </span>
+                  );
+                })}
+              </p>
+            ))}
+
+            {/* Show placeholder if no lines revealed yet in multi-line mode */}
+            {hasMultipleVerseLines && revealedVerseLines === 0 && (
+              <p className="text-muted-foreground text-center italic">
+                Tap "Reveal Next Line" to begin
+              </p>
+            )}
           </div>
 
-          {/* Reveal/Hide All Button */}
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={showAll ? hideAll : revealAll}
-            className="w-full"
-          >
-            {showAll ? (
-              <>
-                <EyeOff className="w-5 h-5 mr-2" />
-                Hide All Words
-              </>
-            ) : (
-              <>
-                <Eye className="w-5 h-5 mr-2" />
-                Reveal All Words
-              </>
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            {/* Next Line button for multi-line passages */}
+            {hasMultipleVerseLines && !allVerseLinesRevealed && (
+              <Button
+                variant="reveal"
+                size="lg"
+                onClick={handleRevealNextVerseLine}
+                className="w-full"
+              >
+                <ChevronDown className="w-5 h-5 mr-2" />
+                Reveal Next Line ({revealedVerseLines + 1}/{verseLineData.length})
+              </Button>
             )}
-          </Button>
+
+            {/* Reveal/Hide All Button */}
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={showAll ? hideAllWords : revealAllWords}
+              className="w-full"
+            >
+              {showAll ? (
+                <>
+                  <EyeOff className="w-5 h-5 mr-2" />
+                  Hide All Words
+                </>
+              ) : (
+                <>
+                  <Eye className="w-5 h-5 mr-2" />
+                  Reveal All Words
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </main>
 

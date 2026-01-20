@@ -1,23 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useScene } from "@/context/SceneContext";
 import { usePracticeData } from "@/hooks/usePracticeData";
 import PracticeHeader from "@/components/PracticeHeader";
 import PracticeNavigation from "@/components/PracticeNavigation";
-import { Eye, Quote, Loader2 } from "lucide-react";
+import { Eye, Quote, Loader2, ChevronDown } from "lucide-react";
 
 const CueSayIt = () => {
   const { getCurrentLine, selectedRole, currentLineIndex, totalLines } = useScene();
   const { loading, error, isReady } = usePracticeData();
-  const [isRevealed, setIsRevealed] = useState(false);
+  const [revealedLineCount, setRevealedLineCount] = useState(0);
   const navigate = useNavigate();
 
   const line = getCurrentLine();
 
+  // Split shakespeare_line by newlines into verse lines
+  const verseLines = useMemo(() => {
+    if (!line) return [];
+    return line.shakespeare_line.split('\n').filter(l => l.trim());
+  }, [line]);
+
+  const hasMultipleLines = verseLines.length > 1;
+  const allRevealed = revealedLineCount >= verseLines.length;
+
   // Reset revealed state when line changes
   useEffect(() => {
-    setIsRevealed(false);
+    setRevealedLineCount(0);
   }, [currentLineIndex]);
 
   // Show loading state
@@ -55,12 +64,18 @@ const CueSayIt = () => {
     );
   }
 
-  const handleReveal = () => {
-    setIsRevealed(true);
+  const handleRevealNext = () => {
+    if (revealedLineCount < verseLines.length) {
+      setRevealedLineCount(prev => prev + 1);
+    }
+  };
+
+  const handleRevealAll = () => {
+    setRevealedLineCount(verseLines.length);
   };
 
   const handleNextReset = () => {
-    setIsRevealed(false);
+    setRevealedLineCount(0);
   };
 
   return (
@@ -85,35 +100,69 @@ const CueSayIt = () => {
           {/* Prompt */}
           <div className="text-center mb-6 py-4">
             <p className="text-muted-foreground">
-              {isRevealed 
+              {allRevealed 
                 ? "How did you do?" 
-                : "Speak your line aloud, then reveal to check"
+                : revealedLineCount > 0 && hasMultipleLines
+                  ? `Line ${revealedLineCount} of ${verseLines.length} revealed`
+                  : "Speak your line aloud, then reveal to check"
               }
             </p>
           </div>
 
           {/* Your Line (Hidden or Revealed) */}
           <div className="flex-1">
-            {!isRevealed ? (
+            {revealedLineCount === 0 ? (
               <Button
                 variant="reveal"
                 size="xl"
                 className="w-full h-auto py-6"
-                onClick={handleReveal}
+                onClick={handleRevealNext}
               >
                 <Eye className="w-5 h-5 mr-2" />
-                Reveal Your Line
+                {hasMultipleLines ? "Reveal First Line" : "Reveal Your Line"}
               </Button>
             ) : (
               <div className="p-4 md:p-5 bg-card rounded-lg border-2 border-primary shadow-md animate-in fade-in duration-300">
-                <div className="flex items-center gap-2 text-primary mb-3">
+                <div className="flex items-center justify-between text-primary mb-3">
                   <span className="text-xs md:text-sm font-semibold uppercase tracking-wide break-words">
                     {selectedRole}'s Line
                   </span>
+                  {hasMultipleLines && (
+                    <span className="text-xs text-muted-foreground">
+                      {revealedLineCount}/{verseLines.length}
+                    </span>
+                  )}
                 </div>
-                <p className="font-serif text-lg md:text-xl text-foreground leading-relaxed break-words">
-                  "{line.shakespeare_line}"
-                </p>
+                <div className="font-serif text-lg md:text-xl text-foreground leading-relaxed space-y-2">
+                  {verseLines.slice(0, revealedLineCount).map((verseLine, idx) => (
+                    <p key={idx} className="break-words animate-in fade-in slide-in-from-top-2 duration-300">
+                      {idx === 0 ? '"' : ''}{verseLine}{idx === verseLines.length - 1 && revealedLineCount === verseLines.length ? '"' : ''}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reveal More / Reveal All buttons */}
+            {revealedLineCount > 0 && !allRevealed && hasMultipleLines && (
+              <div className="mt-4 flex gap-3">
+                <Button
+                  variant="reveal"
+                  size="lg"
+                  className="flex-1"
+                  onClick={handleRevealNext}
+                >
+                  <ChevronDown className="w-5 h-5 mr-2" />
+                  Next Line
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleRevealAll}
+                >
+                  <Eye className="w-5 h-5 mr-2" />
+                  Show All
+                </Button>
               </div>
             )}
           </div>
