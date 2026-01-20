@@ -116,10 +116,15 @@ export const SceneProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Strip inline stage directions like [Aside to Don Pedro] from text for practice games
+  // Preserves newlines for verse-by-verse revelation in practice games
   const stripStageDirections = (text: string): string => {
-    // Remove bracketed stage directions, preserving surrounding text
-    // Handles [text] patterns but keeps the rest of the line
-    return text.replace(/\s*\[[^\]]*\]\s*/g, ' ').trim().replace(/\s+/g, ' ');
+    // Remove bracketed stage directions, preserving surrounding text and newlines
+    // Process each line separately to preserve line breaks
+    return text
+      .split('\n')
+      .map(line => line.replace(/\s*\[[^\]]*\]\s*/g, ' ').trim().replace(/\s+/g, ' '))
+      .filter(line => line.length > 0)
+      .join('\n');
   };
 
   // Load lines from database LineBlocks
