@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useScene } from "@/context/SceneContext";
 import { usePracticeData } from "@/hooks/usePracticeData";
 import PracticeHeader from "@/components/PracticeHeader";
@@ -12,21 +14,41 @@ const Scramble = () => {
   const { loading, error } = usePracticeData();
   const navigate = useNavigate();
 
+  const [groupByLine, setGroupByLine] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState<number[]>([]);
+  const [availableChunks, setAvailableChunks] = useState<number[]>([]);
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+
   const line = getCurrentLine();
 
-  // Split line into chunks (3-5 pieces)
+  // Split line into verse lines (by \n)
+  const verseLines = useMemo(() => {
+    if (!line) return [];
+    return line.shakespeare_line.split('\n').filter(l => l.trim());
+  }, [line]);
+
+  const hasMultipleVerseLines = verseLines.length > 1;
+
+  // Create chunks based on groupByLine setting
   const chunks = useMemo(() => {
     if (!line) return [];
-    const words = line.shakespeare_line.split(/\s+/);
-    const numChunks = Math.min(5, Math.max(3, Math.ceil(words.length / 3)));
-    const chunkSize = Math.ceil(words.length / numChunks);
     
-    const result: string[] = [];
-    for (let i = 0; i < words.length; i += chunkSize) {
-      result.push(words.slice(i, i + chunkSize).join(" "));
+    if (groupByLine && hasMultipleVerseLines) {
+      // Each verse line becomes a chunk
+      return verseLines;
+    } else {
+      // Original behavior: split all words into 3-5 chunks
+      const words = line.shakespeare_line.replace(/\n/g, ' ').split(/\s+/);
+      const numChunks = Math.min(5, Math.max(3, Math.ceil(words.length / 3)));
+      const chunkSize = Math.ceil(words.length / numChunks);
+      
+      const result: string[] = [];
+      for (let i = 0; i < words.length; i += chunkSize) {
+        result.push(words.slice(i, i + chunkSize).join(" "));
+      }
+      return result;
     }
-    return result;
-  }, [line]);
+  }, [line, groupByLine, hasMultipleVerseLines, verseLines]);
 
   // Scrambled order (randomized on mount and line change)
   const scrambledOrder = useMemo(() => {
@@ -37,13 +59,9 @@ const Scramble = () => {
       [indices[i], indices[j]] = [indices[j], indices[i]];
     }
     return indices;
-  }, [chunks, currentLineIndex]);
+  }, [chunks, currentLineIndex, groupByLine]);
 
-  const [selectedOrder, setSelectedOrder] = useState<number[]>([]);
-  const [availableChunks, setAvailableChunks] = useState<number[]>(scrambledOrder);
-  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-
-  // Reset state when line changes
+  // Reset state when line changes or groupByLine changes
   useEffect(() => {
     setSelectedOrder([]);
     setAvailableChunks(scrambledOrder);
@@ -137,6 +155,21 @@ const Scramble = () => {
             </div>
           </div>
 
+          {/* Group by Line Toggle - only show if multiple verse lines */}
+          {hasMultipleVerseLines && (
+            <div className="flex items-center justify-center gap-3 mb-4 p-3 bg-muted/30 rounded-lg">
+              <Switch
+                id="group-by-line"
+                checked={groupByLine}
+                onCheckedChange={setGroupByLine}
+                disabled={isCorrect !== null}
+              />
+              <Label htmlFor="group-by-line" className="text-sm text-muted-foreground cursor-pointer">
+                Order whole lines {groupByLine ? "(on)" : "(off - word chunks)"}
+              </Label>
+            </div>
+          )}
+
           {/* Selected Order (Drop Zone) */}
           <div className="mb-4">
             <p className="text-sm text-muted-foreground mb-2 text-center">
@@ -144,7 +177,9 @@ const Scramble = () => {
                 ? "Perfect! You got it right! 🎭" 
                 : isCorrect === false 
                   ? "Not quite—try again!" 
-                  : "Tap chunks in the correct order"
+                  : groupByLine && hasMultipleVerseLines
+                    ? "Put the lines in order"
+                    : "Tap chunks in the correct order"
               }
             </p>
             <div className={`
@@ -158,17 +193,17 @@ const Scramble = () => {
             `}>
               {selectedOrder.length === 0 ? (
                 <p className="text-muted-foreground text-center text-sm italic">
-                  Your arranged line will appear here
+                  Your arranged {groupByLine && hasMultipleVerseLines ? 'lines' : 'line'} will appear here
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className={`flex ${groupByLine && hasMultipleVerseLines ? 'flex-col' : 'flex-wrap'} gap-2`}>
                   {selectedOrder.map((chunkIndex, position) => (
                     <button
                       key={`selected-${position}`}
                       onClick={() => handleChunkDeselect(position)}
                       disabled={isCorrect !== null}
                       className={`
-                        px-2 md:px-3 py-2 rounded-md font-serif text-xs md:text-sm transition-all break-words max-w-full
+                        px-2 md:px-3 py-2 rounded-md font-serif text-xs md:text-sm transition-all break-words max-w-full text-left
                         ${isCorrect !== null 
                           ? "bg-card border border-border cursor-default" 
                           : "bg-primary/10 border border-primary/30 hover:bg-primary/20 cursor-pointer"
@@ -188,14 +223,20 @@ const Scramble = () => {
             <div className="mb-4">
               <div className="flex items-center gap-2 text-muted-foreground mb-2">
                 <Shuffle className="w-4 h-4" />
-                <span className="text-sm">Available chunks</span>
+                <span className="text-sm">
+                  {groupByLine && hasMultipleVerseLines ? 'Available lines' : 'Available chunks'}
+                </span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className={`flex ${groupByLine && hasMultipleVerseLines ? 'flex-col' : 'flex-wrap'} gap-2`}>
                 {availableChunks.map((chunkIndex) => (
                   <button
                     key={`available-${chunkIndex}`}
                     onClick={() => handleChunkSelect(chunkIndex)}
-                    className="px-3 md:px-4 py-2 md:py-3 rounded-lg bg-card border border-border hover:border-primary hover:bg-primary/5 font-serif text-sm md:text-base transition-all shadow-sm break-words max-w-full"
+                    className={`
+                      px-3 md:px-4 py-2 md:py-3 rounded-lg bg-card border border-border 
+                      hover:border-primary hover:bg-primary/5 font-serif text-sm md:text-base 
+                      transition-all shadow-sm break-words max-w-full text-left
+                    `}
                   >
                     {chunks[chunkIndex]}
                   </button>
