@@ -336,17 +336,6 @@ const ModernEnglishSceneViewer = () => {
             </Select>
           )}
 
-          {/* Translation Style Picker */}
-          <Select value={selectedStyle} onValueChange={setSelectedStyle}>
-            <SelectTrigger className="w-full max-w-xs">
-              <SelectValue placeholder="Translation style" />
-            </SelectTrigger>
-            <SelectContent>
-              {TRANSLATION_STYLES.map(style => (
-                <SelectItem key={style.value} value={style.value}>{style.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
