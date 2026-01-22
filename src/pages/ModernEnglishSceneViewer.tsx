@@ -277,7 +277,7 @@ const ModernEnglishSceneViewer = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/practice-modes')}
+            onClick={() => navigate('/section-picker')}
           >
             <ChevronLeft className="w-5 h-5" />
           </Button>
