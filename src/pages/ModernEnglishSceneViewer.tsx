@@ -55,14 +55,17 @@ type VisibleMode = 'none' | 'mine' | 'all';
 
 const ModernEnglishSceneViewer = () => {
   const navigate = useNavigate();
-  const { selectedRole } = useScene();
+  const { selectedRole, selectedSection } = useScene();
   
   // Always use canonical scene for kid-facing viewer
   const sceneId = CANONICAL_SCENE_ID;
   
   const [sections, setSections] = useState<ScriptSection[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
+    // Use context section if available, otherwise fall back to localStorage
+    selectedSection?.id || null
+  );
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<string>(DEFAULT_STYLE);
   const [lineBlocks, setLineBlocks] = useState<LineBlockWithTranslation[]>([]);
@@ -70,20 +73,24 @@ const ModernEnglishSceneViewer = () => {
   const [visibleMode, setVisibleMode] = useState<VisibleMode>('none');
   const [visibleTranslations, setVisibleTranslations] = useState<Set<string>>(new Set());
 
-  // Load persisted settings on mount
+  // Load persisted settings on mount (only if no context section)
   useEffect(() => {
     const savedMode = localStorage.getItem(STORAGE_KEYS.VISIBLE_MODE) as VisibleMode | null;
-    const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
     const savedCharacter = localStorage.getItem(STORAGE_KEYS.SELECTED_CHARACTER);
 
     if (savedMode) setVisibleMode(savedMode);
-    if (savedSection) setSelectedSectionId(savedSection);
     if (savedCharacter) setSelectedCharacter(savedCharacter);
+
+    // Only load section from localStorage if we don't have one from context
+    if (!selectedSection) {
+      const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
+      if (savedSection) setSelectedSectionId(savedSection);
+    }
 
     // Force ChatGPT style to avoid stale cached styles causing "No translation available yet"
     setSelectedStyle(DEFAULT_STYLE);
     localStorage.setItem(STORAGE_KEYS.TRANSLATION_STYLE, DEFAULT_STYLE);
-  }, []);
+  }, [selectedSection]);
 
   // Set character from context
   useEffect(() => {
@@ -126,8 +133,18 @@ const ModernEnglishSceneViewer = () => {
 
       setSections(data || []);
       
-      // Set initial section from localStorage or first section
+      // Set initial section: prefer context, then localStorage, then first section
       if (data && data.length > 0) {
+        if (selectedSection) {
+          // If we have a context section, validate it exists in this scene's sections
+          const validContextSection = data.find(s => s.id === selectedSection.id);
+          if (validContextSection) {
+            setSelectedSectionId(validContextSection.id);
+            return;
+          }
+        }
+        
+        // Fall back to localStorage or first section
         const savedSection = localStorage.getItem(STORAGE_KEYS.SELECTED_SECTION);
         const validSection = data.find(s => s.id === savedSection);
         setSelectedSectionId(validSection?.id || data[0].id);
@@ -135,7 +152,7 @@ const ModernEnglishSceneViewer = () => {
     };
 
     fetchSections();
-  }, [sceneId]);
+  }, [sceneId, selectedSection]);
 
   // Fetch characters
   useEffect(() => {
