@@ -14,8 +14,8 @@ const PracticeHeader = ({ title }: PracticeHeaderProps) => {
   const progress = ((currentLineIndex + 1) / totalLines) * 100;
 
   const handleBack = () => {
-    // Go back to scene choice
-    navigate('/scenes');
+    // Go back to section/scene selection
+    navigate('/section-picker');
   };
 
   return (
