@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Loader2, Scissors, Combine, AlertTriangle, Save, RefreshCw, 
-  ChevronUp, ChevronDown, TriangleAlert, Trash2
+  ChevronUp, ChevronDown, TriangleAlert, Trash2, Plus
 } from "lucide-react";
 import {
   AlertDialog,
@@ -84,6 +84,11 @@ const AdminScriptFix = () => {
   // Delete dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  
+  // Add section dialog state
+  const [showAddSectionDialog, setShowAddSectionDialog] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [addingSection, setAddingSection] = useState(false);
   
   // All unique speakers for quick selection
   const [allSpeakers, setAllSpeakers] = useState<string[]>([]);
@@ -480,6 +485,63 @@ const AdminScriptFix = () => {
     }
   };
 
+  // ADD SECTION operation
+  const handleAddSection = async () => {
+    if (!selectedSceneId || !newSectionTitle.trim()) {
+      toast.error('Please enter a section title');
+      return;
+    }
+
+    setAddingSection(true);
+    try {
+      // Get highest order_index for this scene
+      const { data: existingSections } = await supabase
+        .from('script_sections')
+        .select('order_index')
+        .eq('scene_id', selectedSceneId)
+        .order('order_index', { ascending: false })
+        .limit(1);
+
+      const nextOrderIndex = existingSections && existingSections.length > 0 
+        ? existingSections[0].order_index + 1 
+        : 0;
+
+      const { data: newSection, error } = await supabase
+        .from('script_sections')
+        .insert({
+          scene_id: selectedSceneId,
+          title: newSectionTitle.trim(),
+          order_index: nextOrderIndex,
+          act_number: null,
+          scene_number: null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success(`Section "${newSectionTitle}" created`);
+      setShowAddSectionDialog(false);
+      setNewSectionTitle("");
+      
+      // Refresh sections and select the new one
+      const { data: updatedSections } = await supabase
+        .from('script_sections')
+        .select('*')
+        .eq('scene_id', selectedSceneId)
+        .order('order_index');
+      
+      setSections(updatedSections || []);
+      if (newSection) {
+        setSelectedSectionId(newSection.id);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add section');
+    } finally {
+      setAddingSection(false);
+    }
+  };
+
   // Regenerate translations for affected blocks
   const handleRegenerateTranslations = async () => {
     if (!selectedSceneId) return;
@@ -565,17 +627,27 @@ const AdminScriptFix = () => {
             </SelectContent>
           </Select>
 
-          <Select value={selectedSectionId || "all"} onValueChange={v => setSelectedSectionId(v === "all" ? null : v)}>
-            <SelectTrigger><SelectValue placeholder="Section" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sections</SelectItem>
-              {sections.map(s => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.act_number && s.scene_number ? `Act ${s.act_number}, Scene ${s.scene_number}` : s.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex gap-2">
+            <Select value={selectedSectionId || "all"} onValueChange={v => setSelectedSectionId(v === "all" ? null : v)}>
+              <SelectTrigger className="flex-1"><SelectValue placeholder="Section" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sections</SelectItem>
+                {sections.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.act_number && s.scene_number ? `Act ${s.act_number}, Scene ${s.scene_number}` : s.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={() => setShowAddSectionDialog(true)}
+              title="Add new section"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -860,6 +932,38 @@ const AdminScriptFix = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Section Dialog */}
+      <Dialog open={showAddSectionDialog} onOpenChange={setShowAddSectionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Section</DialogTitle>
+            <DialogDescription>
+              Create a new section (e.g., "Monologues", "Act 6", etc.) for this script.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Section Title</Label>
+              <Input 
+                value={newSectionTitle}
+                onChange={(e) => setNewSectionTitle(e.target.value)}
+                placeholder="e.g., Monologues, Act 6 Scene 1"
+                autoFocus
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddSectionDialog(false)}>Cancel</Button>
+            <Button onClick={handleAddSection} disabled={addingSection || !newSectionTitle.trim()}>
+              {addingSection ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              Add Section
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
