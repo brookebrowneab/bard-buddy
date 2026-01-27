@@ -201,9 +201,7 @@ const ModernEnglishGame = () => {
                 onClick={() => setSelectedSectionId(section.id)}
                 className="whitespace-nowrap"
               >
-                {section.act_number && section.scene_number
-                  ? `Act ${section.act_number}, Scene ${section.scene_number}`
-                  : section.title}
+                {section.title}
               </Button>
             ))}
           </div>
