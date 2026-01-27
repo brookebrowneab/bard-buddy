@@ -694,7 +694,7 @@ const AdminScriptFix = () => {
                 <SelectItem value="all">All Sections</SelectItem>
                 {sections.map(s => (
                   <SelectItem key={s.id} value={s.id}>
-                    {s.act_number && s.scene_number ? `Act ${s.act_number}, Scene ${s.scene_number}` : s.title}
+                    {s.title}
                   </SelectItem>
                 ))}
               </SelectContent>
