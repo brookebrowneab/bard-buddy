@@ -11,8 +11,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Loader2, Scissors, Combine, AlertTriangle, Save, RefreshCw, 
-  ChevronUp, ChevronDown, TriangleAlert
+  ChevronUp, ChevronDown, TriangleAlert, Trash2
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CANONICAL_SCENE_ID, isCanonicalScene, getSceneLabel, DUPLICATE_SCENE_WARNING } from "@/config/canonicalScenes";
@@ -70,6 +80,13 @@ const AdminScriptFix = () => {
   const [editingSpeaker, setEditingSpeaker] = useState(false);
   const [newSpeakerName, setNewSpeakerName] = useState("");
   const [savingSpeaker, setSavingSpeaker] = useState(false);
+  
+  // Delete dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
+  // All unique speakers for quick selection
+  const [allSpeakers, setAllSpeakers] = useState<string[]>([]);
 
   // Check admin status
   useEffect(() => {
@@ -154,6 +171,13 @@ const AdminScriptFix = () => {
 
     const { data } = await query;
     setLineBlocks(data || []);
+    
+    // Extract unique speakers for the dropdown
+    if (data) {
+      const uniqueSpeakers = [...new Set(data.map(b => b.speaker_name))].sort();
+      setAllSpeakers(uniqueSpeakers);
+    }
+    
     setLoading(false);
   };
 
@@ -401,6 +425,61 @@ const AdminScriptFix = () => {
     }
   };
 
+  // DELETE operation
+  const handleDelete = async () => {
+    if (!selectedBlock) return;
+
+    setDeleting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Log audit before deletion
+      await supabase.from('lineblock_edit_audit').insert({
+        lineblock_id: selectedBlock.id,
+        action: 'delete',
+        field_name: 'text_raw',
+        old_value: selectedBlock.text_raw,
+        new_value: null,
+        reason: `Deleted block #${selectedBlock.order_index} (${selectedBlock.speaker_name})`,
+        changed_by: user.id,
+      });
+
+      // Delete the block (cascades to translations)
+      await supabase
+        .from('line_blocks')
+        .delete()
+        .eq('id', selectedBlock.id);
+
+      // Reindex remaining blocks in section
+      const { data: remainingBlocks } = await supabase
+        .from('line_blocks')
+        .select('id, order_index')
+        .eq('scene_id', selectedBlock.scene_id)
+        .eq('section_id', selectedBlock.section_id)
+        .order('order_index');
+
+      for (let i = 0; i < (remainingBlocks || []).length; i++) {
+        const block = remainingBlocks![i];
+        if (block.order_index !== i) {
+          await supabase
+            .from('line_blocks')
+            .update({ order_index: i })
+            .eq('id', block.id);
+        }
+      }
+
+      toast.success('Block deleted');
+      setShowDeleteDialog(false);
+      setSelectedBlock(null);
+      fetchLineBlocks();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Regenerate translations for affected blocks
   const handleRegenerateTranslations = async () => {
     if (!selectedSceneId) return;
@@ -531,7 +610,7 @@ const AdminScriptFix = () => {
                       {block.text_raw}
                     </p>
                     {block.text_raw.length > 400 && (
-                      <Badge variant="outline" className="text-orange-600 border-orange-300">
+                      <Badge variant="destructive" className="opacity-70">
                         <AlertTriangle className="w-3 h-3 mr-1" />
                         Long
                       </Badge>
@@ -553,10 +632,21 @@ const AdminScriptFix = () => {
               
               {editingSpeaker ? (
                 <div className="flex items-center gap-2">
+                  <Select value={newSpeakerName} onValueChange={setNewSpeakerName}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Select speaker" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allSpeakers.map(speaker => (
+                        <SelectItem key={speaker} value={speaker}>{speaker}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Input 
                     value={newSpeakerName}
                     onChange={(e) => setNewSpeakerName(e.target.value)}
-                    className="w-40"
+                    placeholder="Or type new name"
+                    className="w-36"
                   />
                   <Button size="sm" onClick={handleSaveSpeaker} disabled={savingSpeaker}>
                     {savingSpeaker ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -595,6 +685,15 @@ const AdminScriptFix = () => {
               >
                 <Combine className="w-4 h-4 mr-1" />
                 Merge
+              </Button>
+              
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete
               </Button>
             </div>
             
@@ -732,6 +831,35 @@ const AdminScriptFix = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Line Block?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete block #{selectedBlock?.order_index} by {selectedBlock?.speaker_name}. 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selectedBlock && (
+            <div className="p-3 bg-muted rounded-lg font-serif text-sm line-clamp-3">
+              {selectedBlock.text_raw}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
