@@ -63,8 +63,8 @@ const ModernEnglishSceneViewer = () => {
   const [sections, setSections] = useState<ScriptSection[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
-    // Use context section if available, otherwise fall back to localStorage
-    selectedSection?.id || null
+    // Use context section if available (null means "all sections"), otherwise fall back to localStorage
+    selectedSection === null ? null : (selectedSection?.id || null)
   );
   const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<string>(DEFAULT_STYLE);
@@ -133,8 +133,15 @@ const ModernEnglishSceneViewer = () => {
 
       setSections(data || []);
       
-      // Set initial section: prefer context, then localStorage, then first section
+      // Set initial section: prefer context (null = all sections), then localStorage, then first section
       if (data && data.length > 0) {
+        // If context explicitly set to null (Practice All), keep it null
+        if (selectedSection === null) {
+          setSelectedSectionId(null);
+          localStorage.removeItem(STORAGE_KEYS.SELECTED_SECTION);
+          return;
+        }
+        
         if (selectedSection) {
           // If we have a context section, validate it exists in this scene's sections
           const validContextSection = data.find(s => s.id === selectedSection.id);
@@ -174,22 +181,19 @@ const ModernEnglishSceneViewer = () => {
     let isActive = true;
 
     const fetchLines = async () => {
-      // Avoid a "fetch everything" call before we know the active section.
-      if (!selectedSectionId) {
-        if (!isActive) return;
-        setLineBlocks([]);
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
 
+      // Build query - if selectedSectionId is null, fetch all sections
       let query = supabase
         .from('line_blocks')
         .select('id, order_index, speaker_name, text_raw, section_id')
         .eq('scene_id', sceneId)
-        .eq('section_id', selectedSectionId)
         .order('order_index');
+
+      // Only filter by section if one is selected
+      if (selectedSectionId) {
+        query = query.eq('section_id', selectedSectionId);
+      }
 
       const { data: blocks, error: blocksError } = await query;
 
@@ -320,6 +324,17 @@ const ModernEnglishSceneViewer = () => {
         {sections.length > 0 && (
           <div className="overflow-x-auto">
             <div className="flex gap-2">
+              <Button
+                variant={selectedSectionId === null ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSelectedSectionId(null);
+                  localStorage.removeItem(STORAGE_KEYS.SELECTED_SECTION);
+                }}
+                className="whitespace-nowrap"
+              >
+                All Sections
+              </Button>
               {sections.map((section) => (
                 <Button
                   key={section.id}

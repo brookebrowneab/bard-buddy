@@ -16,7 +16,8 @@ const SectionPicker = () => {
     setSceneId, 
     setSceneTitle, 
     loadFromLineBlocks,
-    sceneId: contextSceneId
+    sceneId: contextSceneId,
+    setSelectedSection,
   } = useScene();
   const { 
     fetchScene, 
@@ -66,6 +67,8 @@ const SectionPicker = () => {
     
     if (blocks && selectedRole) {
       loadFromLineBlocks(blocks, selectedRole);
+      // Set the selected section in context
+      setSelectedSection(section);
       // Navigate to the selected practice mode
       navigate(selectedMode || '/practice/cue-say-it');
     }
@@ -76,6 +79,8 @@ const SectionPicker = () => {
     const allBlocks = await fetchLineBlocks(activeSceneId!);
     if (allBlocks && selectedRole) {
       loadFromLineBlocks(allBlocks, selectedRole);
+      // Set section to null to indicate "all sections"
+      setSelectedSection(null);
       navigate(selectedMode || '/practice/cue-say-it');
     }
   };
