@@ -486,6 +486,9 @@ const AdminScriptFix = () => {
   };
 
   // ADD SECTION operation
+  // State for insert position - "start", "end", or section ID to insert after
+  const [insertAfterSectionId, setInsertAfterSectionId] = useState<string>("end");
+
   const handleAddSection = async () => {
     if (!selectedSceneId || !newSectionTitle.trim()) {
       toast.error('Please enter a section title');
@@ -494,24 +497,80 @@ const AdminScriptFix = () => {
 
     setAddingSection(true);
     try {
-      // Get highest order_index for this scene
-      const { data: existingSections } = await supabase
-        .from('script_sections')
-        .select('order_index')
-        .eq('scene_id', selectedSceneId)
-        .order('order_index', { ascending: false })
-        .limit(1);
+      let newOrderIndex: number;
 
-      const nextOrderIndex = existingSections && existingSections.length > 0 
-        ? existingSections[0].order_index + 1 
-        : 0;
+      if (insertAfterSectionId === "start") {
+        // Insert at the beginning - shift all existing sections up
+        await supabase
+          .from('script_sections')
+          .update({ order_index: supabase.rpc ? undefined : undefined }) // Placeholder for shift logic
+          .eq('scene_id', selectedSceneId);
+        
+        // Shift all sections' order_index up by 1
+        const { data: allSections } = await supabase
+          .from('script_sections')
+          .select('id, order_index')
+          .eq('scene_id', selectedSceneId)
+          .order('order_index', { ascending: false });
+        
+        if (allSections) {
+          for (const section of allSections) {
+            await supabase
+              .from('script_sections')
+              .update({ order_index: section.order_index + 1 })
+              .eq('id', section.id);
+          }
+        }
+        newOrderIndex = 0;
+      } else if (insertAfterSectionId === "end") {
+        // Insert at the end
+        const { data: existingSections } = await supabase
+          .from('script_sections')
+          .select('order_index')
+          .eq('scene_id', selectedSceneId)
+          .order('order_index', { ascending: false })
+          .limit(1);
+
+        newOrderIndex = existingSections && existingSections.length > 0 
+          ? existingSections[0].order_index + 1 
+          : 0;
+      } else {
+        // Insert after a specific section
+        const { data: afterSection } = await supabase
+          .from('script_sections')
+          .select('order_index')
+          .eq('id', insertAfterSectionId)
+          .single();
+
+        if (!afterSection) throw new Error('Reference section not found');
+        
+        const insertPosition = afterSection.order_index + 1;
+        
+        // Shift all sections after the insert position up by 1
+        const { data: sectionsToShift } = await supabase
+          .from('script_sections')
+          .select('id, order_index')
+          .eq('scene_id', selectedSceneId)
+          .gte('order_index', insertPosition)
+          .order('order_index', { ascending: false });
+        
+        if (sectionsToShift) {
+          for (const section of sectionsToShift) {
+            await supabase
+              .from('script_sections')
+              .update({ order_index: section.order_index + 1 })
+              .eq('id', section.id);
+          }
+        }
+        newOrderIndex = insertPosition;
+      }
 
       const { data: newSection, error } = await supabase
         .from('script_sections')
         .insert({
           scene_id: selectedSceneId,
           title: newSectionTitle.trim(),
-          order_index: nextOrderIndex,
+          order_index: newOrderIndex,
           act_number: null,
           scene_number: null,
         })
@@ -523,6 +582,7 @@ const AdminScriptFix = () => {
       toast.success(`Section "${newSectionTitle}" created`);
       setShowAddSectionDialog(false);
       setNewSectionTitle("");
+      setInsertAfterSectionId("end");
       
       // Refresh sections and select the new one
       const { data: updatedSections } = await supabase
@@ -952,6 +1012,24 @@ const AdminScriptFix = () => {
                 placeholder="e.g., Monologues, Act 6 Scene 1"
                 autoFocus
               />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Insert Position</Label>
+              <Select value={insertAfterSectionId} onValueChange={setInsertAfterSectionId}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Choose position..." />
+                </SelectTrigger>
+                <SelectContent className="bg-background border z-50">
+                  <SelectItem value="start">At the beginning</SelectItem>
+                  {sections.map((section) => (
+                    <SelectItem key={section.id} value={section.id}>
+                      After: {section.title}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="end">At the end</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           
