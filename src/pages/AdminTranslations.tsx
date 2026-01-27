@@ -610,9 +610,7 @@ const AdminTranslations = () => {
                       <SelectItem value="all">All Sections</SelectItem>
                       {sections.map((section) => (
                         <SelectItem key={section.id} value={section.id}>
-                          {section.act_number && section.scene_number
-                            ? `Act ${section.act_number}, Scene ${section.scene_number}`
-                            : section.title}
+                          {section.title}
                         </SelectItem>
                       ))}
                     </SelectContent>
