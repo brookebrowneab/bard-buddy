@@ -110,10 +110,13 @@ const SectionPicker = () => {
       <header className="px-4 pt-6 pb-4">
         <AppBreadcrumbs className="mb-4" />
         <h1 className="font-serif text-xl md:text-2xl font-bold text-foreground text-center">
-          Choose Scene
+          Pick what you want to practice
         </h1>
         <p className="text-center text-muted-foreground mt-2 text-sm">
           Scenes where <span className="font-semibold text-foreground break-words">{selectedRole}</span> appears
+        </p>
+        <p className="text-center font-serif text-sm text-muted-foreground mt-3 italic">
+          You don't have to finish — just try a few lines.
         </p>
       </header>
 

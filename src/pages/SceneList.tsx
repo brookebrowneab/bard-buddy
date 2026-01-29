@@ -79,7 +79,7 @@ const SceneList = () => {
           Back to Characters
         </Button>
         <h1 className="font-serif text-2xl font-bold text-foreground text-center">
-          Choose a Scene
+          Pick what you want to practice
         </h1>
         {selectedRole && (
           <p className="text-center text-primary font-medium mt-1">
@@ -88,6 +88,9 @@ const SceneList = () => {
         )}
         <p className="text-center text-muted-foreground mt-2 text-sm">
           {sections.length} scene{sections.length !== 1 ? 's' : ''} available
+        </p>
+        <p className="text-center font-serif text-sm text-muted-foreground mt-3 italic">
+          You don't have to finish — just try a few lines.
         </p>
       </header>
 

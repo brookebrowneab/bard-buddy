@@ -15,8 +15,8 @@ interface PracticeModeOption {
 const practiceModes: PracticeModeOption[] = [
   {
     id: "cue-say-it",
-    title: "Cue → Say It",
-    description: "See your cue, speak your line, then check yourself",
+    title: "Say It",
+    description: "Practice saying it out loud.",
     icon: <MessageCircle className="w-6 h-6" />,
     path: "/practice/cue-say-it"
   },
@@ -36,8 +36,8 @@ const practiceModes: PracticeModeOption[] = [
   },
   {
     id: "plain-english",
-    title: "Plain English → Shakespeare",
-    description: "Read the modern meaning, then recall the Bard's words",
+    title: "Understand",
+    description: "What does this line mean?",
     icon: <Languages className="w-6 h-6" />,
     path: "/practice/plain-english"
   }
