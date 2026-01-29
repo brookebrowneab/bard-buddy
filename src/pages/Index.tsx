@@ -100,6 +100,16 @@ const Index = () => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 md:px-6 pb-12">
         <div className="w-full max-w-sm space-y-4">
+          {/* Reassurance text above main actions */}
+          <div className="text-center mb-6">
+            <p className="font-serif text-base md:text-lg text-foreground leading-relaxed">
+              Practice your lines a few minutes at a time.
+            </p>
+            <p className="font-serif text-base md:text-lg text-muted-foreground">
+              No pressure. You can't mess this up.
+            </p>
+          </div>
+
           {/* Current Role Display */}
           {selectedRole && (
             <div className="text-center mb-6 p-5 bg-card rounded-lg border border-border">
@@ -145,6 +155,11 @@ const Index = () => {
               </div>
             </Button>
           </Link>
+
+          {/* Subtle reassurance below buttons */}
+          <p className="text-center text-xs text-muted-foreground pt-4">
+            Nothing is recorded. This is just for you.
+          </p>
         </div>
       </main>
 

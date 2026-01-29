@@ -45,10 +45,13 @@ const PracticeNavigation = ({ onNext }: PracticeNavigationProps) => {
             variant="default"
             size="lg"
             onClick={handleFinish}
-            className="flex-1"
+            className="flex-1 flex-col h-auto py-3"
           >
-            <PartyPopper className="w-5 h-5 mr-1" />
-            Finish!
+            <span className="flex items-center">
+              <PartyPopper className="w-5 h-5 mr-1" />
+              Done!
+            </span>
+            <span className="text-xs font-normal opacity-80 mt-0.5">Nice work. You practiced today.</span>
           </Button>
         ) : (
           <Button

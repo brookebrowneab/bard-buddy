@@ -166,6 +166,11 @@ const CueSayIt = () => {
               </div>
             )}
           </div>
+          
+          {/* Subtle reassurance at bottom */}
+          <p className="text-center text-xs text-muted-foreground pt-6">
+            Try it. Stop anytime.
+          </p>
         </div>
       </main>
 

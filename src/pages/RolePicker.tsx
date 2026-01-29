@@ -93,6 +93,9 @@ const RolePicker = () => {
         <p className="text-center text-muted-foreground mt-2 text-sm">
           {characters.length} character{characters.length !== 1 ? 's' : ''} in this production
         </p>
+        <p className="text-center font-serif text-sm text-muted-foreground mt-3 italic">
+          You don't have to finish — just try a few lines.
+        </p>
       </header>
 
       {/* Character List */}
