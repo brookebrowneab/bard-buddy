@@ -159,22 +159,21 @@ const AdminScriptFix = () => {
     fetchSections();
   }, [selectedSceneId]);
 
-  // Fetch line blocks
+  // Fetch line blocks - ALWAYS require a section to be selected
   const fetchLineBlocks = async () => {
-    if (!selectedSceneId) return;
+    if (!selectedSceneId || !selectedSectionId) {
+      setLineBlocks([]);
+      return;
+    }
     
     setLoading(true);
-    let query = supabase
+    const { data } = await supabase
       .from('line_blocks')
       .select('*')
       .eq('scene_id', selectedSceneId)
+      .eq('section_id', selectedSectionId)
       .order('order_index');
 
-    if (selectedSectionId) {
-      query = query.eq('section_id', selectedSectionId);
-    }
-
-    const { data } = await query;
     setLineBlocks(data || []);
     
     // Extract unique speakers for the dropdown
