@@ -57,34 +57,80 @@ export function usePracticeData() {
       setLoading(true);
       setError(null);
 
-      let query = supabase
-        .from('line_blocks')
-        .select('*')
-        .eq('scene_id', activeScriptId)
-        .order('order_index', { ascending: true });
-
-      // If a specific section is selected, filter by it
-      // If selectedSection is null, we get all sections (Practice All)
+      // If a specific section is selected, simple query with order_index
       if (selectedSection) {
-        query = query.eq('section_id', selectedSection.id);
-      }
+        const { data: blocks, error: fetchError } = await supabase
+          .from('line_blocks')
+          .select('*')
+          .eq('scene_id', activeScriptId)
+          .eq('section_id', selectedSection.id)
+          .order('order_index', { ascending: true });
 
-      const { data: blocks, error: fetchError } = await query;
+        if (fetchError) {
+          setError(fetchError.message);
+          setLoading(false);
+          return;
+        }
 
-      if (fetchError) {
-        setError(fetchError.message);
+        if (!blocks || blocks.length === 0) {
+          setError('No lines found');
+          setLoading(false);
+          return;
+        }
+
+        loadFromLineBlocks(blocks as LineBlock[], selectedRole);
+        loadedRef.current = loadKey;
         setLoading(false);
         return;
       }
 
-      if (!blocks || blocks.length === 0) {
+      // Practice All: need to fetch sections for proper ordering
+      const [blocksResult, sectionsResult] = await Promise.all([
+        supabase
+          .from('line_blocks')
+          .select('*')
+          .eq('scene_id', activeScriptId)
+          .order('order_index', { ascending: true }),
+        supabase
+          .from('script_sections')
+          .select('id, order_index')
+          .eq('scene_id', activeScriptId)
+          .order('order_index', { ascending: true })
+      ]);
+
+      if (blocksResult.error) {
+        setError(blocksResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!blocksResult.data || blocksResult.data.length === 0) {
         setError('No lines found');
         setLoading(false);
         return;
       }
 
-      // Load lines for the selected role
-      loadFromLineBlocks(blocks as LineBlock[], selectedRole);
+      // Create a map of section_id to order_index for sorting
+      const sectionOrderMap = new Map<string, number>();
+      if (sectionsResult.data) {
+        sectionsResult.data.forEach((section) => {
+          sectionOrderMap.set(section.id, section.order_index);
+        });
+      }
+
+      // Sort blocks: first by section order_index, then by line order_index
+      // Lines with null section_id go at the end
+      const sortedBlocks = [...blocksResult.data].sort((a, b) => {
+        const aSectionOrder = a.section_id ? (sectionOrderMap.get(a.section_id) ?? Infinity) : Infinity;
+        const bSectionOrder = b.section_id ? (sectionOrderMap.get(b.section_id) ?? Infinity) : Infinity;
+        
+        if (aSectionOrder !== bSectionOrder) {
+          return aSectionOrder - bSectionOrder;
+        }
+        return a.order_index - b.order_index;
+      });
+
+      loadFromLineBlocks(sortedBlocks as LineBlock[], selectedRole);
       loadedRef.current = loadKey;
       setLoading(false);
     };
