@@ -183,38 +183,105 @@ const ModernEnglishSceneViewer = () => {
     const fetchLines = async () => {
       setLoading(true);
 
-      // Build query - if selectedSectionId is null, fetch all sections
-      let query = supabase
-        .from('line_blocks')
-        .select('id, order_index, speaker_name, text_raw, section_id')
-        .eq('scene_id', sceneId)
-        .order('order_index');
-
-      // Only filter by section if one is selected
+      // If a specific section is selected, simple query
       if (selectedSectionId) {
-        query = query.eq('section_id', selectedSectionId);
+        const { data: blocks, error: blocksError } = await supabase
+          .from('line_blocks')
+          .select('id, order_index, speaker_name, text_raw, section_id')
+          .eq('scene_id', sceneId)
+          .eq('section_id', selectedSectionId)
+          .order('order_index');
+
+        if (!isActive) return;
+
+        if (blocksError) {
+          console.error('Error fetching line blocks:', blocksError);
+          setLineBlocks([]);
+          setLoading(false);
+          return;
+        }
+
+        if (!blocks || blocks.length === 0) {
+          setLineBlocks([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch translations
+        const blockIds = blocks.map(b => b.id);
+        const { data: translations } = await supabase
+          .from('lineblock_translations_public')
+          .select('lineblock_id, translation_text, status, review_status')
+          .in('lineblock_id', blockIds)
+          .eq('style', selectedStyle);
+
+        if (!isActive) return;
+
+        const translationMap = new Map(
+          (translations || []).map(t => [t.lineblock_id, t])
+        );
+
+        const blocksWithTranslations: LineBlockWithTranslation[] = blocks.map(block => ({
+          ...block,
+          translation: translationMap.get(block.id),
+        }));
+
+        setLineBlocks(blocksWithTranslations);
+        setLoading(false);
+        return;
       }
 
-      const { data: blocks, error: blocksError } = await query;
+      // All Sections: fetch sections for proper ordering
+      const [blocksResult, sectionsResult] = await Promise.all([
+        supabase
+          .from('line_blocks')
+          .select('id, order_index, speaker_name, text_raw, section_id')
+          .eq('scene_id', sceneId)
+          .order('order_index'),
+        supabase
+          .from('script_sections')
+          .select('id, order_index')
+          .eq('scene_id', sceneId)
+          .order('order_index')
+      ]);
 
       if (!isActive) return;
 
-      if (blocksError) {
-        console.error('Error fetching line blocks:', blocksError);
+      if (blocksResult.error) {
+        console.error('Error fetching line blocks:', blocksResult.error);
         setLineBlocks([]);
         setLoading(false);
         return;
       }
 
-      if (!blocks || blocks.length === 0) {
+      if (!blocksResult.data || blocksResult.data.length === 0) {
         setLineBlocks([]);
         setLoading(false);
         return;
       }
 
-      // Fetch translations for these blocks using selected style
-      const blockIds = blocks.map(b => b.id);
-      const { data: translations, error: translationsError } = await supabase
+      // Create section order map
+      const sectionOrderMap = new Map<string, number>();
+      if (sectionsResult.data) {
+        sectionsResult.data.forEach((section) => {
+          sectionOrderMap.set(section.id, section.order_index);
+        });
+      }
+
+      // Sort blocks by section order first, then line order
+      const sortedBlocks = [...blocksResult.data].sort((a, b) => {
+        const aSectionOrder = a.section_id ? (sectionOrderMap.get(a.section_id) ?? Infinity) : Infinity;
+        const bSectionOrder = b.section_id ? (sectionOrderMap.get(b.section_id) ?? Infinity) : Infinity;
+        
+        if (aSectionOrder !== bSectionOrder) {
+          return aSectionOrder - bSectionOrder;
+        }
+        return a.order_index - b.order_index;
+      });
+
+      // Fetch translations
+      const blockIds = sortedBlocks.map(b => b.id);
+      const { data: translations } = await supabase
         .from('lineblock_translations_public')
         .select('lineblock_id, translation_text, status, review_status')
         .in('lineblock_id', blockIds)
@@ -222,15 +289,11 @@ const ModernEnglishSceneViewer = () => {
 
       if (!isActive) return;
 
-      if (translationsError) {
-        console.error('Error fetching translations:', translationsError);
-      }
-
       const translationMap = new Map(
         (translations || []).map(t => [t.lineblock_id, t])
       );
 
-      const blocksWithTranslations: LineBlockWithTranslation[] = blocks.map(block => ({
+      const blocksWithTranslations: LineBlockWithTranslation[] = sortedBlocks.map(block => ({
         ...block,
         translation: translationMap.get(block.id),
       }));
